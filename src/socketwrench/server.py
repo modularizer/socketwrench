@@ -1,3 +1,4 @@
+"""A simple HTTP server built directly on top of socket.socket."""
 import socket
 import logging
 import time
@@ -9,6 +10,7 @@ logger = logging.getLogger("socketwrench")
 
 
 class Server(socket.socket):
+    """A simple HTTP server built directly on top of socket.socket."""
     default_port = 8080
     default_host = ''
     default_backlog = 1
