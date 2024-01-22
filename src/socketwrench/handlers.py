@@ -1,3 +1,5 @@
+import json
+
 from socketwrench.types import Request, Response, Query, Body, Hash, Route, FullPath, Method, File, ClientAddr, \
     HTTPStatusCode, ErrorResponse, Headers
 
@@ -141,7 +143,6 @@ class RouteHandler:
                     self[k] = v
 
     def __call__(self, request: Request) -> Response:
-        logger.info(str(request))
         handler = self.routes.get(request.path.route(), self.fallback_handler)
         allowed_methods = getattr(handler, "allowed_methods", None)
         if allowed_methods is None or request.method not in allowed_methods:
