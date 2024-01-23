@@ -4,7 +4,7 @@ import logging
 import time
 
 from socketwrench.connection import Connection
-from socketwrench.handlers import RouteHandler
+from socketwrench.handlers import RouteHandler, wrap_handler
 
 logger = logging.getLogger("socketwrench")
 
@@ -52,12 +52,17 @@ class Server(socket.socket):
             fallback_handler (RequestHandler, optional): The function to use to handle requests that don't match any routes.
             serve (bool, optional): Whether to start serving immediately. Defaults to False.
         """
-
-        self.handler = RouteHandler(
-            fallback_handler=fallback_handler,
-            routes=routes,
-            base_path="/"
-        )
+        if callable(routes):
+            if isinstance(routes, RouteHandler):
+                self.handler = routes
+            else:
+                self.handler = wrap_handler(routes)
+        else:
+            self.handler = RouteHandler(
+                fallback_handler=fallback_handler,
+                routes=routes,
+                base_path="/"
+            )
         self.host = host
         self.port = port
         self.backlog = backlog

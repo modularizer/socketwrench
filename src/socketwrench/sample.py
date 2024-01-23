@@ -1,8 +1,3 @@
-# socketwrench
-A webserver based on `socket`.
-
-## Usage
-```python
 import logging
 from socketwrench import Server as SocketWrench, methods
 from pathlib import Path
@@ -25,7 +20,7 @@ class Sample:
     def _unserved(self):
         """This function will not be served."""
         return "this will not be served"
-    
+
     @private
     def unserved(self):
         """This function will not be served."""
@@ -35,17 +30,17 @@ class Sample:
     def post(self, name):
         """This function will only be served by POST requests."""
         return f"hello {name}"
-    
+
     @put
     def put(self, name):
         """This function will only be served by PUT requests."""
         return f"hello {name}"
-    
+
     @patch
     def patch(self, name):
         """This function will only be served by PATCH requests."""
         return f"hello {name}"
-    
+
     @delete
     def delete(self, name):
         """This function will only be served by DELETE requests."""
@@ -117,4 +112,3 @@ class Sample:
 if __name__ == '__main__':
     s = Sample()
     SocketWrench(s, serve=True)
-```

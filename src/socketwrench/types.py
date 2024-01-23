@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from pathlib import Path
 
@@ -74,29 +75,19 @@ class RequestPath(str):
     BASE = "/"
 
     def query(self) -> str:
-        """Extracts the query string from the path and remove the hash."""
+        """Extracts the query string from the path."""
         if "?" not in self:
             return ""
         q = self.split("?", 1)[1]
-        if "#" in q:
-            q = q.split("#", 1)[0]
         return q
 
     def route(self) -> str:
-        """Extracts the path from the path and remove the query and hash."""
+        """Extracts the path from the path and remove the query."""
         p = self.split("?", 1)[0]
-        if "#" in p:
-            p = p.split("#", 1)[0]
         return p
 
-    def hash(self) -> str:
-        """Extracts the hash from the path."""
-        if "#" not in self:
-            return ""
-        return self.split("#", 1)[1]
-
     def query_args(self) -> dict[str, str]:
-        """Extracts the query string from the path and remove the hash."""
+        """Extracts the query string from the path and parses into a dictionary."""
         q = self.query()
         if not q:
             return {}
@@ -148,8 +139,21 @@ class Request:
     @property
     def headers(self) -> Headers:
         if self._headers is None:
-            self._headers = Headers(self.header_bytes)
+            self._headers = Headers(self.header_bytes.to_dict())
         return self._headers
+
+    def to_string(self) -> str:
+        return f'{self.method} {self.path} {self.version}\r\n{self.headers}\r\n\r\n{self.body}'
+
+    def to_json(self) -> str:
+        return json.dumps({
+            "method": self.method,
+            "path": self.path,
+            "version": self.version,
+            "headers": self.headers,
+            "body": str(self.body),
+            "client_addr": self.client_addr
+        })
 
     def __repr__(self):
         return f"<Request {self.method} {self.path} client_addr={self.client_addr} ...>"
@@ -306,7 +310,8 @@ class Response:
                  ):
         self.status_code = HTTPStatusCode(status_code)
         self.version = HTTPVersion(version)
-        self.headers = HeaderBytes(headers)
+        self.header_bytes = HeaderBytes(headers)
+        self.headers = Headers(self.header_bytes.to_dict())
         for k, v in headers_kwargs.items():
             t = k.replace("_", " ").title().replace(" ", "-")
             if not isinstance(v, str):
@@ -502,7 +507,30 @@ class JSONResponse(Response):
         if not isinstance(data, str):
             if isinstance(data, tuple):
                 data = list(data)
-            data = json.dumps(data)
+            if dataclasses.is_dataclass(data):
+                data = dataclasses.asdict(data)
+
+            if hasattr(data, "to_json"):
+                try:
+                    data = data.to_json()
+                except:
+                    if hasattr(data, "to_dict"):
+                        try:
+                            data = json.dumps(data.to_dict())
+                        except:
+                            data = str(data)
+                    else:
+                        data = str(data)
+            elif hasattr(data, "to_dict"):
+                try:
+                    data = json.dumps(data.to_dict())
+                except:
+                    data = str(data)
+            else:
+                try:
+                    data = json.dumps(data)
+                except:
+                    data = str(data)
         super().__init__(data.encode(), status_code, headers, version)
 
 
@@ -544,9 +572,6 @@ class PermanentRedirect(RedirectResponse):
 
 
 class Query(dict):
-    pass
-
-class Hash(str):
     pass
 
 class Route(str):

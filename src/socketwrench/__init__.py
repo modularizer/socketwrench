@@ -14,11 +14,18 @@ from .types import (
     RequestBody,
     Query,
     Body,
-    Hash,
     Route,
     FullPath,
     Method,
     File,
     ClientAddr,
     Headers
+)
+from .tags import (
+    methods,
+    get,
+    post,
+    put,
+    patch,
+    delete
 )
