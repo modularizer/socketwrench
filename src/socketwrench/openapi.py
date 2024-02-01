@@ -40,7 +40,6 @@ def openapi_schema(routes_dict):
         if "responses" not in route_info:
             sig = getattr(func, "sig", inspect.signature(func)) or inspect.signature(func)
             return_type = sig.return_annotation
-            print(f"{return_type=}")
             if return_type is inspect._empty:
                 try:
                     last_line = inspect.getsourcelines(func)[0][-1].strip()
@@ -72,12 +71,10 @@ def openapi_schema(routes_dict):
                             return_type = Path
                         elif "Response(" in r and r.endswith(")"):
                             class_name = r.split("(")[0]
-                            print(f"{class_name=}")
                             # try to import the class from .types
                             try:
                                 module = __import__("socketwrench.types", fromlist=[class_name])
                                 return_type = getattr(module, class_name)
-                                print(f"heyheyhey {return_type=}")
                             except:
                                 return_type = Response
                 except:

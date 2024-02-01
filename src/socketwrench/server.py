@@ -33,7 +33,7 @@ class Server(socket.socket):
                  pause_sleep: float = default_pause_sleep,
                  accept_sleep: float = default_accept_sleep,
                  fallback_handler=None,
-                 serve: bool = False,
+                 serve: bool = True,
                  favicon: str | Path = default_favicon,
                  ):
         """A simple HTTP server built directly on top of socket.socket.
@@ -53,8 +53,16 @@ class Server(socket.socket):
             accept_sleep (float, optional): The number of seconds to sleep between checking for new connections.
                 Could affect latency. Defaults to 0.1.
             fallback_handler (RequestHandler, optional): The function to use to handle requests that don't match any routes.
-            serve (bool, optional): Whether to start serving immediately. Defaults to False.
+            serve (bool, optional): Whether to start serving immediately. Defaults to True.
         """
+        if isinstance(routes, type):
+            routes = routes()
+
+        s = str(routes)
+        s2 = s.split("\n")[0][:50]
+        s = s2 + ("..." if len(s) > len(s2) else "")
+        logger.info(f"Creating server with {s}")
+
         if callable(routes):
             if isinstance(routes, RouteHandler):
                 self.handler = routes
@@ -113,7 +121,14 @@ class Server(socket.socket):
             for option, value in options.items():
                 self.setsockopt(level, option, value)
 
-    def serve(self, thread: bool = False, cleanup_event = None, pause_event = None) -> None | tuple:
+    def serve(self, thread: bool = False, cleanup_event = None, pause_event = None, **kwargs) -> None | tuple:
+        if not isinstance(self, Server):
+            if isinstance(self, str) or "<module" in str(type(self)):
+                return Server.serve_module(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, **kwargs)
+            elif isinstance(self, type):
+                return Server.serve_class(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, **kwargs)
+            # allows classmethod-like usage of Server.serve(my_server_instance)
+            return Server(self).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
         if thread:
             import threading
 
@@ -128,6 +143,8 @@ class Server(socket.socket):
         self.bind((self.host, self.port))
         self.listen(self.backlog)
         logger.info(f"Serving HTTP on port {self.port}...")
+        logger.info(f"Press Ctrl+C to stop the server.")
+        logger.info(f"Go to http://{self.host or 'localhost'}:{self.port}/swagger to see documentation.")
 
         while cleanup_event is None or (not cleanup_event.is_set()):
             if self.pause_sleep and pause_event is not None:
@@ -183,27 +200,29 @@ class Server(socket.socket):
         return self._rep
 
 
-if __name__ == '__main__':
-    from pathlib import Path
+    @classmethod
+    def serve_class(cls, c, thread: bool = False, cleanup_event = None, pause_event = None, **kwargs):
+        inst = c()
+        return cls(inst, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
 
-    logging.basicConfig(level=logging.DEBUG)
+    @classmethod
+    def serve_module(cls, module, thread: bool = False, cleanup_event = None, pause_event = None, **kwargs):
+        if isinstance(module, Path):
+            import importlib
+            import sys
+            module = importlib.util.spec_from_file_location("module", module)
+            module = importlib.util.module_from_spec(module)
+            module.__file__ = module.__spec__.origin
+            module.__package__ = module.__spec__.name
+            sys.modules[module.__spec__.name] = module
+            module.__spec__.loader.exec_module(module)
+        elif isinstance(module, str):
+            try:
+                import importlib
+                module = importlib.import_module(module)
+            except ImportError:
+                parts = module.split(".")
+                module = importlib.import_module(".".join(parts[:-1]))
+                module = getattr(module, parts[-1])
+        return cls(module, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
 
-    class Sample:
-        def a(self):
-            return "yes this is a"
-
-        def b(self):
-            return {"x": 6, "y": 7}
-
-        def c(self):
-            return Path(__file__)
-
-        def d(self, x: int, y: int):
-            return int(x) + int(y)
-
-        def e(self):
-            raise Exception("This is an exception")
-
-    s = Sample()
-
-    Server(s, serve=True)

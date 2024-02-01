@@ -299,7 +299,6 @@ class Response(metaclass=ResponseType):
                 **headers_kwargs):
         # If the body is already a Response instance, return it
         if isinstance(body, Response):
-            print("Returning body", body)
             return body
 
         # Create an instance of the appropriate subclass based on the body type
@@ -409,7 +408,6 @@ class FileResponse(Response):
                              headers=headers,
                              content_type=content_type,
                              version=version)
-            print(f"file response body: {self.body}")
 
     def get_content_type(self, suffix: str):
         suffix = suffix.lower()

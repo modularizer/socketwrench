@@ -1,8 +1,7 @@
 import logging
-from socketwrench import Server as SocketWrench, methods, FileResponse
 from pathlib import Path
 
-from socketwrench.tags import private, post, put, patch, delete, route
+from socketwrench.tags import private, post, put, patch, delete, route, methods
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -47,6 +46,7 @@ class Sample:
         return f"hello {name}"
 
     def echo(self, *args, **kwargs):
+        """Echos back any query or body parameters."""
         if not args and not kwargs:
             return
         if args:
@@ -57,16 +57,20 @@ class Sample:
             return kwargs
         return args, kwargs
 
-    def string(self):
+    def string(self) -> str:
+        """Returns a string response."""
         return "this is a string"
 
-    def html(self):
+    def html(self) -> str:
+        """Returns an HTML response."""
         return "<h1>hello world</h1><br><p>this is a paragraph</p>"
 
-    def json(self):
+    def json(self) -> dict:
+        """Returns a JSON response."""
         return {"x": 6, "y": 7}
 
-    def file(self):
+    def file(self) -> Path:
+        """Returns sample.py as a file response."""
         return Path(__file__)
 
     def add(self, x: int, y: int):
@@ -77,23 +81,28 @@ class Sample:
         """Returns the client address."""
         return client_addr
 
-    def headers(self, headers):
+    def headers(self, headers) -> dict:
         """Returns the request headers."""
         return headers
 
-    def query(self, query, *args, **kwargs):
+    def query(self, query, *args, **kwargs) -> str:
+        """Returns the query string."""
         return query
 
-    def body(self, body):
+    def body(self, body) -> bytes:
+        """Returns the request body."""
         return body
 
-    def method(self, method):
+    def method(self, method) -> str:
+        """Returns the method."""
         return method
 
-    def get_route(self, route):
+    def get_route(self, route) -> str:
+        """Returns the route."""
         return route
 
-    def request(self, request):
+    def request(self, request) -> dict:
+        """Returns the request object."""
         return request
 
     def everything(self, request, client_addr, headers, query, body, method, route, full_path):
@@ -116,11 +125,12 @@ class Sample:
         print(f"calling a with {b=}, {c=}")
         return f"captured {b=}, {c=}"
 
-    def pic(self):
-        return FileResponse(Path(__file__).parent.parent / "resources" / "torin.jpg")
-
-
 
 if __name__ == '__main__':
+    from socketwrench import serve
     s = Sample()
-    SocketWrench(s, serve=True)
+    serve(s)
+    # OR
+    # serve(Sample)
+    # OR
+    # serve("socketwrench.samples.sample.Sample")

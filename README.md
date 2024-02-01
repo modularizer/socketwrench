@@ -1,13 +1,67 @@
 # socketwrench
 A webserver based on `socket`.
 
-## Usage
+## Quickstart
+
+### Install
+```bash
+pip install socketwrench
+```
+
+### Serve a class
+```python
+from socketwrench import serve
+
+class MyServer:
+    def hello(self):
+        return "world"
+  
+if __name__ == '__main__':
+    serve(MyServer)
+    # OR
+    # m = MyServer()
+    # serve(m)
+    # OR
+    # serve("my_module.MyServer")
+```
+
+## Other Usage Modes
+### Serve a module
+```python
+# my_module.py
+def hello():
+    return "world"
+```
+```commandline
+python -m socketwrench my_module
+```
+
+### Serve a single function on all routes
+```python
+from socketwrench import serve
+
+def print_request(request):
+    s = "<h>You made the following request:</h><br/>"
+    s += f"<b>Method:</b> {request.method}<br/>"
+    s += f"<b>Route:</b> {request.path.route()}<br/>"
+    s += f"<b>Headers:</b><br/> {str(request.headers).replace('\n', '<br>')}<br/>"
+    s += f"<b>Query:</b> {request.path.query_args()}<br/>"
+    s += f"<b>Body:</b> {request.body}<br/>"
+    return s
+
+
+if __name__ == '__main__':
+    serve(print_request)
+```
+
+
+
+## (mostly) Full Feature Sample
 ```python
 import logging
-from socketwrench import Server as SocketWrench, methods
 from pathlib import Path
 
-from socketwrench.tags import private, post, put, patch, delete
+from socketwrench.tags import private, post, put, patch, delete, route, methods
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -25,7 +79,7 @@ class Sample:
     def _unserved(self):
         """This function will not be served."""
         return "this will not be served"
-    
+
     @private
     def unserved(self):
         """This function will not be served."""
@@ -35,23 +89,24 @@ class Sample:
     def post(self, name):
         """This function will only be served by POST requests."""
         return f"hello {name}"
-    
+
     @put
     def put(self, name):
         """This function will only be served by PUT requests."""
         return f"hello {name}"
-    
+
     @patch
     def patch(self, name):
         """This function will only be served by PATCH requests."""
         return f"hello {name}"
-    
+
     @delete
     def delete(self, name):
         """This function will only be served by DELETE requests."""
         return f"hello {name}"
 
     def echo(self, *args, **kwargs):
+        """Echos back any query or body parameters."""
         if not args and not kwargs:
             return
         if args:
@@ -62,40 +117,52 @@ class Sample:
             return kwargs
         return args, kwargs
 
-    def string(self):
+    def string(self) -> str:
+        """Returns a string response."""
         return "this is a string"
 
-    def html(self):
+    def html(self) -> str:
+        """Returns an HTML response."""
         return "<h1>hello world</h1><br><p>this is a paragraph</p>"
 
-    def json(self):
+    def json(self) -> dict:
+        """Returns a JSON response."""
         return {"x": 6, "y": 7}
 
-    def file(self):
+    def file(self) -> Path:
+        """Returns sample.py as a file response."""
         return Path(__file__)
 
     def add(self, x: int, y: int):
+        """Adds two numbers together."""
         return x + y
 
     def client_addr(self, client_addr):
+        """Returns the client address."""
         return client_addr
 
-    def headers(self, headers):
+    def headers(self, headers) -> dict:
+        """Returns the request headers."""
         return headers
 
-    def query(self, query, *args, **kwargs):
+    def query(self, query, *args, **kwargs) -> str:
+        """Returns the query string."""
         return query
 
-    def body(self, body):
+    def body(self, body) -> bytes:
+        """Returns the request body."""
         return body
 
-    def method(self, method):
+    def method(self, method) -> str:
+        """Returns the method."""
         return method
 
-    def route(self, route):
+    def get_route(self, route) -> str:
+        """Returns the route."""
         return route
 
-    def request(self, request):
+    def request(self, request) -> dict:
+        """Returns the request object."""
         return request
 
     def everything(self, request, client_addr, headers, query, body, method, route, full_path):
@@ -113,8 +180,18 @@ class Sample:
             print(k, v)
         return d
 
+    @route("/a/{c}", error_mode="traceback")
+    def a(self, b, c=5):
+        print(f"calling a with {b=}, {c=}")
+        return f"captured {b=}, {c=}"
+
 
 if __name__ == '__main__':
+    from socketwrench import serve
     s = Sample()
-    SocketWrench(s, serve=True)
+    serve(s)
+    # OR
+    # serve(Sample)
+    # OR
+    # serve("socketwrench.samples.sample.Sample")
 ```

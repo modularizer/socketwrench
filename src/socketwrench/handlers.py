@@ -3,6 +3,7 @@ import json
 import builtins
 import logging
 import traceback
+from contextlib import suppress
 from functools import wraps
 from pathlib import Path
 
@@ -169,7 +170,7 @@ def preprocess_args(_handler):
         elif param.annotation is inspect._empty and param.name in available_types:
             special_params[param.name].append(name)
         elif param.name in available_types and not issubclass(param.annotation, available_types[param.name]):
-            raise ValueError(f"Parameter '{param.name}' must be typed as {available_types[param.name]}.")
+            raise ValueError(f"Parameter '{param.name}' must be typed as {available_types[param.name]}, not {param.annotation}.")
 
         if collector_found:
             pass
@@ -265,8 +266,6 @@ def wrap_handler(_handler, error_mode: str = ErrorModes.HIDE):
                         response = Response(r, version=request.version)
         except Exception as e:
             logger.exception(e)
-            print(f"error_mode: {error_mode}")
-            print(traceback.format_exc())
             if error_mode == ErrorModes.HIDE:
                 msg = b'Internal Server Error'
             elif error_mode == ErrorModes.TYPE:
@@ -351,25 +350,23 @@ class RouteHandler:
         for k in dir(obj):
             if not k.startswith("_"):
                 v = getattr(obj, k)
-                if callable(v):
+                if callable(v) and not isinstance(v, type):
                     if self.require_tag and not hasattr(v, "allowed_methods"):
                         continue
                     if getattr(v, "do_not_serve", False):
                         continue
                     routes = getattr(v, "routes", [k])
                     for route in routes:
-                        self[route] = v
+                        with suppress(Exception):
+                            self[route] = v
 
     def __call__(self, request: Request) -> Response:
         route = request.path.route()
         handler = self.routes.get(route, None)
         route_params = {}
         if handler is None:
-            print(f"route: {route}, {self.default_routes}")
             if route in self.default_routes:
-                print("using default handler")
                 handler = self.default_routes[route]
-                print(f"{handler=}")
             else:
                 # check all variadic routes
                 route_parts = route.split("/")

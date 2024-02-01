@@ -29,3 +29,5 @@ from .tags import (
     patch,
     delete
 )
+
+serve = Server.serve
