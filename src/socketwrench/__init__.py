@@ -22,6 +22,7 @@ from .types import (
     Headers
 )
 from .tags import (
+    tag,
     methods,
     get,
     post,
