@@ -311,10 +311,15 @@ class RouteHandler:
             self.parse_routes_from_object(routes)
         self.fallback_handler = wrap_handler(fallback_handler) if fallback_handler else None
 
+        op = wrap_handler(self.openapi, error_mode=error_mode)
+        sw = wrap_handler(self.swagger, error_mode=error_mode)
+
         self.default_routes = {
-            "/api-docs": wrap_handler(self.openapi, error_mode=error_mode),
-            "/openapi.json": wrap_handler(self.openapi, error_mode=error_mode),
-            "/swagger": wrap_handler(self.swagger, error_mode=error_mode),
+            "/api-docs": op,
+            "/openapi.json": op,
+            "/swagger": sw,
+            "/docs": sw,
+            "/swagger-ui": sw,
         }
         if self.favicon_path:
             self.default_routes["/favicon.ico"] = wrap_handler(self.favicon, error_mode=error_mode),
