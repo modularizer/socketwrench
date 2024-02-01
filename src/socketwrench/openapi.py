@@ -1,5 +1,4 @@
 import inspect
-import json
 from pathlib import Path
 
 from socketwrench import FileResponse, Response

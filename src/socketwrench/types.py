@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 import dataclasses
 import datetime
 import json
 from pathlib import Path
-from typing import Protocol, TypeVar, Generic
 
 
 class HTTPVersion(str):

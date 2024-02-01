@@ -137,8 +137,8 @@ def everything(request, client_addr, headers, query, body, method, route, full_p
 
 @route("/a/{c}", error_mode="traceback")
 def a(b, c=5):
-    print(f"calling a with {b=}, {c=}")
-    return f"captured {b=}, {c=}"
+    print(f"calling a with b={b}, c={c}")
+    return f"captured b={b}, c={c}"
 
 
 if __name__ == '__main__':

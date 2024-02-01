@@ -1,4 +1,6 @@
 """A simple HTTP server built directly on top of socket.socket."""
+from __future__ import annotations
+
 import socket
 import logging
 import time

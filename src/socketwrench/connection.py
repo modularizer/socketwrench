@@ -84,7 +84,7 @@ class Connection:
         if self._rep is None:
             r = ""
             if self.chunk_size != self.default_chunk_size:
-                r += f", {self.chunk_size=}"
+                r += f", chunk_size={self.chunk_size}"
 
             self._rep = f'<{self.__class__.__name__}({self.socket}, {self.client_addr}, {self.cleanup_event}{r})>'
         return self._rep
