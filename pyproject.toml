@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "socketwrench"
-version = "0.2.1"
+version = "1.1.1"
 description = "A simple Python library for creating web servers and APIs using sockets"
 readme = "README.md"
 authors = [{ name = "Torin Halsted", email = "modularizer@gmail.com" }]
