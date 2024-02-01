@@ -1,36 +1,52 @@
-def methods(*method):
-    def decorator(handler):
-        handler.__dict__["allowed_methods"] = method
+from functools import partial
+
+
+def tag(handler=None, **kwargs):
+    if handler is None:
+        return partial(tag, **kwargs)
+
+    for key, value in kwargs.items():
+        handler.__dict__[key] = value
+    return handler
+
+
+def get_tag(handler, tag_name):
+    if hasattr(handler, "__dict__") and tag_name in handler.__dict__:
+        return handler.__dict__[tag_name]
+    return None
+
+
+def methods(*methods):
+    return partial(tag, allowed_methods=methods)
+
+
+def private(handler):
+    tag(handler, do_not_serve=True)
+    return handler
+
+
+def allowed_methods(*methods: str):
+    def decorator(handler, route: str = None, error_mode: str = None, openapi: dict = None):
+        if isinstance(handler, str) and route is None:
+            return partial(get, route=handler, error_mode=error_mode, openapi=openapi)
+        if route is not None:
+            if "routes" not in handler.__dict__:
+                tag(handler, routes=[])
+            tag(handler, routes=list(set(handler.__dict__["routes"] + [route])))
+        if methods is not None:
+            if "allowed_methods" not in handler.__dict__:
+                tag(handler, allowed_methods=[])
+            tag(handler, allowed_methods=list(set(handler.__dict__["allowed_methods"] + list(methods))))
+        if error_mode is not None:
+            tag(handler, error_mode=error_mode, openapi=openapi)
         return handler
     return decorator
 
 
-def private(handler):
-    handler.__dict__["do_not_serve"] = True
-    return handler
-
-
-def get(handler):
-    handler.__dict__["allowed_methods"] = ("GET",)
-    return handler
-
-
-def post(handler):
-    handler.__dict__["allowed_methods"] = ("POST",)
-    return handler
-
-
-def put(handler):
-    handler.__dict__["allowed_methods"] = ("PUT",)
-    return handler
-
-
-def patch(handler):
-    handler.__dict__["allowed_methods"] = ("PATCH",)
-    return handler
-
-
-def delete(handler):
-    handler.__dict__["allowed_methods"] = ("DELETE",)
-    return handler
+get = allowed_methods("GET")
+post = allowed_methods("POST")
+put = allowed_methods("PUT")
+patch = allowed_methods("PATCH")
+delete = allowed_methods("DELETE")
+route = allowed_methods("GET", "POST", "PUT", "PATCH", "DELETE")
 

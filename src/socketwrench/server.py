@@ -2,6 +2,7 @@
 import socket
 import logging
 import time
+from pathlib import Path
 
 from socketwrench.connection import Connection
 from socketwrench.handlers import RouteHandler, wrap_handler
@@ -19,6 +20,7 @@ class Server(socket.socket):
     default_socket_options = None
     default_pause_sleep = 0.1
     default_accept_sleep = 0.1
+    default_favicon = Path(__file__).parent.parent / "resources" / "favicon.ico"
 
     def __init__(self,
                  routes: dict | None = None,
@@ -32,6 +34,7 @@ class Server(socket.socket):
                  accept_sleep: float = default_accept_sleep,
                  fallback_handler=None,
                  serve: bool = False,
+                 favicon: str | Path = default_favicon,
                  ):
         """A simple HTTP server built directly on top of socket.socket.
 
@@ -61,8 +64,10 @@ class Server(socket.socket):
             self.handler = RouteHandler(
                 fallback_handler=fallback_handler,
                 routes=routes,
-                base_path="/"
+                base_path="/",
+                favicon=favicon
             )
+
         self.host = host
         self.port = port
         self.backlog = backlog

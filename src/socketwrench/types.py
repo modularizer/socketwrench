@@ -1,6 +1,8 @@
 import dataclasses
+import datetime
 import json
 from pathlib import Path
+from typing import Protocol, TypeVar, Generic
 
 
 class HTTPVersion(str):
@@ -275,15 +277,29 @@ for k, v in HTTPStatusCode.__dict__.items():
         setattr(HTTPStatusCode, k, HTTPStatusCode(v, k.replace("_", " ")))
 
 
-class Response:
+class ResponseTypehint:
+    def __init__(self, content_type: str):
+        self.content_type = content_type
+
+
+class ResponseType(type):
+    def __getitem__(self, item):
+        class TypedResponse(Response):
+            default_content_type = item
+        return TypedResponse
+
+
+
+class Response(metaclass=ResponseType):
+    default_content_type = None
     def __new__(cls, body: bytes | ResponseBody = ResponseBody.EMPTY,
                 status_code: int | HTTPStatusCode = HTTPStatusCode.OK,
                 headers: bytes | HeaderBytes | Headers | dict = HeaderBytes.EMPTY,
                 version: str | HTTPVersion = HTTPVersion.HTTP_1_1,
                 **headers_kwargs):
-
         # If the body is already a Response instance, return it
         if isinstance(body, Response):
+            print("Returning body", body)
             return body
 
         # Create an instance of the appropriate subclass based on the body type
@@ -320,7 +336,7 @@ class Response:
         self.body = ResponseBody(body)
 
     def pre_body_bytes(self) -> bytes:
-        return f'{self.version} {self.status_code}\r\n{self.headers}\r\n\r\n'.encode()
+        return f'{self.version} {self.status_code}\r\n{self.headers}\r\n'.encode()
 
     def __repr__(self):
         return f"<Response {self.status_code} {self.body[:10]}>"
@@ -333,13 +349,21 @@ class Response:
 
 
 class FileResponse(Response):
+    default_content_type = None
+
+    def __new__(cls, *args, **kwargs):
+        return super().__new__(cls)
+
     def __init__(self,
                  path: str | Path,
                  filename: str | None = None,
                  status_code: int = 200,
                  headers: dict = None,
                  content_type: str | None = None,
+                 download: bool = False,
                  version: str = "HTTP/1.1"):
+        if content_type is None and self.default_content_type is not None:
+            content_type = self.default_content_type
         path = Path(path)
         if filename is None:
             filename = path.name
@@ -347,14 +371,14 @@ class FileResponse(Response):
         if headers is None:
             headers = {}
 
-        if "Content-Disposition" not in headers:
+        if download and "Content-Disposition" not in headers:
             headers["Content-Disposition"] = f'attachment; filename="{filename}"'
 
         # add headers related to file stats
         if "Content-Length" not in headers:
             headers["Content-Length"] = str(path.stat().st_size)
         if "Last-Modified" not in headers:
-            headers["Last-Modified"] = path.stat().st_mtime
+            headers["Last-Modified"] = datetime.datetime.fromtimestamp(path.stat().st_mtime).isoformat()
 
         if path.is_dir():
             from tempfile import TemporaryFile
@@ -374,11 +398,18 @@ class FileResponse(Response):
             if content_type is None:
                 content_type = self.get_content_type(path.suffix[1:])
 
-            super().__init__(path.read_bytes(),
+            if not path.exists():
+                raise FileNotFoundError(f"No such file or directory: '{path}'")
+            with path.open("rb") as f:
+                f.seek(0)
+                b = f.read()
+
+            super().__init__(b,
                              status_code=status_code,
                              headers=headers,
                              content_type=content_type,
                              version=version)
+            print(f"file response body: {self.body}")
 
     def get_content_type(self, suffix: str):
         suffix = suffix.lower()
@@ -571,6 +602,9 @@ class PermanentRedirect(RedirectResponse):
         super().__init__(location, status_code, headers, version)
 
 
+
+
+
 class Query(dict):
     pass
 
@@ -585,3 +619,10 @@ class Method(str):
 
 class File(bytes):
     pass
+
+
+class ErrorModes:
+    HIDE = "hide"
+    TYPE = "type"
+    SHORT = "short"
+    TRACEBACK = TB = LONG = SHOW = "traceback"

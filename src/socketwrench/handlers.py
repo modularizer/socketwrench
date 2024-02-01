@@ -2,9 +2,13 @@ import inspect
 import json
 import builtins
 import logging
+import traceback
+from functools import wraps
+from pathlib import Path
 
+from socketwrench.tags import tag, get
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
-    HTTPStatusCode, ErrorResponse, Headers
+    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse
 
 logger = logging.getLogger("socketwrench")
 
@@ -179,8 +183,8 @@ def preprocess_args(_handler):
 
     get_autofill_kwargs = autofill.autofill(special_params)
 
-
-    def parser(request: Request) -> tuple[tuple, dict, type]:
+    def parser(request: Request, route_params: dict = None) -> tuple[tuple, dict, type]:
+        route_params = cast_to_types(route_params, sig.parameters) if route_params else {}
         if not sig.parameters:
             return (), {}, sig.return_annotation
         args = []
@@ -216,29 +220,40 @@ def preprocess_args(_handler):
             except:
                 pass
 
+        kwargs.update(route_params)
+
         if "args" in kwargs:
             args = tuple(kwargs.pop("args"))
         else:
             args = tuple(args)
         return args, kwargs, sig.return_annotation
+
+    tag(parser, autofill=special_params, sig=sig)
     return parser
 
-
-def wrap_handler(_handler):
+@tag(accepts_route_params=True)
+def wrap_handler(_handler, error_mode: str = ErrorModes.HIDE):
     """Converts any method into a method that takes a Request and returns a Response."""
     if getattr(_handler, "is_wrapped", False):
         return _handler
     parser = preprocess_args(_handler)
 
-    def wrapper(request: Request) -> Response:
+
+    # make a stub function that takes the same parameters as the handler but doesn't do anything
+    # use inspect.signature to get the parameters
+
+    @wraps(_handler)
+    def wrapper(request: Request, route_params: dict = None) -> Response:
         try:
             if parser is None:
                 r = _handler()
                 response = Response(r, version=request.version)
             else:
-                a, kw, return_annotation = parser(request)
+                a, kw, return_annotation = parser(request, route_params=route_params)
                 r = _handler(*a, **kw)
-                if isinstance(r, HTTPStatusCode):
+                if isinstance(r, Response):
+                    response = r
+                elif isinstance(r, HTTPStatusCode):
                     response = Response(r.phrase(), status_code=r, version=request.version)
                 else:
                     try:
@@ -250,27 +265,82 @@ def wrap_handler(_handler):
                         response = Response(r, version=request.version)
         except Exception as e:
             logger.exception(e)
-            response = ErrorResponse(b'Internal Server Error', version=request.version)
+            print(f"error_mode: {error_mode}")
+            print(traceback.format_exc())
+            if error_mode == ErrorModes.HIDE:
+                msg = b'Internal Server Error'
+            elif error_mode == ErrorModes.TYPE:
+                msg = str(type(e)).encode()
+            elif error_mode == ErrorModes.SHORT:
+                msg = str(e).encode()
+            elif error_mode == ErrorModes.LONG:
+                msg = traceback.format_exc().encode()
+            response = ErrorResponse(msg, version=request.version)
         return response
 
-    wrapper.__dict__["is_wrapped"] = True
+    tag(wrapper,
+        is_wrapped=True,
+        sig=getattr(parser, "sig", inspect.signature(_handler)),
+        autofill=getattr(parser, "autofill", {}), **_handler.__dict__)
     return wrapper
 
 
 class RouteHandler:
+    default_favicon = Path(__file__).parent.parent / "resources" / "favicon.ico"
+
     def __init__(self,
                  routes: dict | None = None,
+                 variable_routes: dict | None = None,
                  fallback_handler=None,
                  base_path: str = "/",
-                 require_tag: bool = False
+                 require_tag: bool = False,
+                 error_mode: str = ErrorModes.HIDE,
+                 favicon: str | None = default_favicon
                  ):
         self.base_path = base_path
         self.require_tag = require_tag
+        self.error_mode = error_mode
+        self.favicon_path = favicon
 
         self.routes = routes if isinstance(routes, dict) else {}
+        self.variadic_routes = variable_routes if isinstance(variable_routes, dict) else {}
+        for k in self.routes.copy():
+            if "{" in k and "}" in k:
+                self.variadic_routes[k] = self.routes.pop(k)
         if routes and not isinstance(routes, dict):
             self.parse_routes_from_object(routes)
         self.fallback_handler = wrap_handler(fallback_handler) if fallback_handler else None
+
+        self.default_routes = {
+            "/api-docs": wrap_handler(self.openapi, error_mode=error_mode),
+            "/openapi.json": wrap_handler(self.openapi, error_mode=error_mode),
+            "/swagger": wrap_handler(self.swagger, error_mode=error_mode),
+        }
+        if self.favicon_path:
+            self.default_routes["/favicon.ico"] = wrap_handler(self.favicon, error_mode=error_mode),
+
+    @get
+    def openapi(self) -> str:
+        from socketwrench.openapi import openapi_schema
+        d = {
+            **self.routes,
+            **self.variadic_routes
+        }
+        o = openapi_schema(d)
+        return o
+
+    @get
+    def favicon(self, request: Request) -> Response:
+        try:
+            r = FileResponse(self.favicon, version=request.version)
+        except Exception as e:
+            r = Response(b"Not Found", status_code=404, version=request.version)
+        return r
+
+    @get
+    def swagger(self) -> FileResponse:
+        return FileResponse(Path(__file__).parent.parent / "resources" / "swagger.html")
+
 
     def parse_routes_from_object(self, obj):
         for k in dir(obj):
@@ -281,10 +351,39 @@ class RouteHandler:
                         continue
                     if getattr(v, "do_not_serve", False):
                         continue
-                    self[k] = v
+                    routes = getattr(v, "routes", [k])
+                    for route in routes:
+                        self[route] = v
 
     def __call__(self, request: Request) -> Response:
-        handler = self.routes.get(request.path.route(), self.fallback_handler)
+        route = request.path.route()
+        handler = self.routes.get(route, None)
+        route_params = {}
+        if handler is None:
+            print(f"route: {route}, {self.default_routes}")
+            if route in self.default_routes:
+                print("using default handler")
+                handler = self.default_routes[route]
+                print(f"{handler=}")
+            else:
+                # check all variadic routes
+                route_parts = route.split("/")
+                n = len(route_parts)
+                for k, v in self.variadic_routes.items():
+                    # these are in format /a/{b}/c/{d}/e, convert to regexp groups
+                    parts = k.split("/")
+                    if n != len(parts):
+                        continue
+                    if all((route_parts[i] == parts[i]) or (parts[i].startswith("{") and parts[i].endswith("}")) for i in range(n)):
+                        handler = v
+                        route_params = {
+                            parts[i][1:-1]: route_parts[i]
+                            for i in range(n)
+                            if parts[i].startswith("{") and parts[i].endswith("}")
+                        }
+                        break
+                else:
+                    handler = self.fallback_handler
         allowed_methods = getattr(handler, "allowed_methods", None)
         if request.method == "HEAD" and "GET" in allowed_methods:
             allowed_methods = list(allowed_methods) + ["HEAD"]
@@ -299,7 +398,10 @@ class RouteHandler:
                             status_code=404,
                             headers={"Content-Type": "text/plain"},
                             version=request.version)
-        r = handler(request)
+        if route_params:
+            r = handler(request, route_params)
+        else:
+            r = handler(request)
         return r
 
     def route(self, handler, route: str | None = None, allowed_methods: tuple[str] | None = None):
@@ -310,9 +412,15 @@ class RouteHandler:
             route = handler.__name__
         if allowed_methods is None:
             allowed_methods = getattr(handler, "allowed_methods", ("GET",))
-        h = wrap_handler(handler)
+        em = getattr(handler, "error_mode", self.error_mode)
+        h = wrap_handler(handler, error_mode=em)
         h.__dict__["allowed_methods"] = allowed_methods
-        self.routes[self.base_path + route] = h
+        if self.base_path == "/" and route.startswith("/"):
+            route = route[1:]
+        if "{" in route and "}" in route:
+            self.variadic_routes[self.base_path + route] = h
+        else:
+            self.routes[self.base_path + route] = h
 
     def get(self, handler=None, route: str | None = None):
         return self.route(handler, route, allowed_methods=("GET",))

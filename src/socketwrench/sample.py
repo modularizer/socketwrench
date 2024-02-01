@@ -1,8 +1,8 @@
 import logging
-from socketwrench import Server as SocketWrench, methods
+from socketwrench import Server as SocketWrench, methods, FileResponse
 from pathlib import Path
 
-from socketwrench.tags import private, post, put, patch, delete
+from socketwrench.tags import private, post, put, patch, delete, route
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -70,12 +70,15 @@ class Sample:
         return Path(__file__)
 
     def add(self, x: int, y: int):
+        """Adds two numbers together."""
         return x + y
 
     def client_addr(self, client_addr):
+        """Returns the client address."""
         return client_addr
 
     def headers(self, headers):
+        """Returns the request headers."""
         return headers
 
     def query(self, query, *args, **kwargs):
@@ -87,7 +90,7 @@ class Sample:
     def method(self, method):
         return method
 
-    def route(self, route):
+    def get_route(self, route):
         return route
 
     def request(self, request):
@@ -107,6 +110,15 @@ class Sample:
         for k, v in d.items():
             print(k, v)
         return d
+
+    @route("/a/{c}", error_mode="traceback")
+    def a(self, b, c=5):
+        print(f"calling a with {b=}, {c=}")
+        return f"captured {b=}, {c=}"
+
+    def pic(self):
+        return FileResponse(Path(__file__).parent.parent / "resources" / "torin.jpg")
+
 
 
 if __name__ == '__main__':
