@@ -26,6 +26,7 @@ if __name__ == '__main__':
 ```
 * Go to http://localhost:8080/hello and see the response "world".
 * Now go to http://localhost:8080/swagger to see the Swagger UI.
+* OR go to http://localhost:8080/api to see a custom api playground.
 
 # Features
 ## OpenAPI & Swagger
