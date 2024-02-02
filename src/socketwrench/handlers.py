@@ -9,7 +9,7 @@ from pathlib import Path
 
 from socketwrench.tags import tag, get, gettag
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
-    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse
+    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, HTMLResponse
 
 logger = logging.getLogger("socketwrench")
 
@@ -287,15 +287,64 @@ def wrap_handler(_handler, error_mode: str = ErrorModes.HIDE):
         is_wrapped=True,
         sig=getattr(parser, "sig", inspect.signature(_handler)),
         autofill=getattr(parser, "autofill", {}), **_handler.__dict__)
+
+    if hasattr(_handler, "match"):
+        tag(wrapper, match=_handler.match)
     return wrapper
 
+
+class MatchableHandlerABC:
+    def match(self, route: str) -> bool:
+        raise NotImplementedError
+
+    def __call__(self, request: Request) -> Response:
+        raise NotImplementedError
+
+
+class StaticFileHandler(MatchableHandlerABC):
+    is_wrapped = True
+    allowed_methods = ["GET", "HEAD"]
+
+    def __init__(self, path: Path | str, route: str = None):
+        self.path = path
+        self.route = route or "/" + path.name
+        self.allowed_methods = ["GET", "HEAD"]
+
+    def match(self, route: str) -> bool:
+        if not route.startswith(self.route):
+            print("route doesn't start with", self.route, route)
+            return False
+        added = route[len(self.route):]
+        p = (self.path / added.strip("/")) if added else self.path
+        if not p.exists():
+            print("path doesn't exist", p, route, added)
+            return False
+        return True
+
+    def __call__(self, request: Request) -> Response:
+        route = request.path.route()
+        if not route.startswith(self.route):
+            return Response(b"Not Found", status_code=404, version=request.version)
+        added = route[len(self.route):]
+        p = (self.path / added.strip("/")) if added else self.path
+
+        if p.is_dir() and (p / "index.html").exists():
+            p = p / "index.html"
+        if not p.exists():
+            return Response(b"Not Found", status_code=404, version=request.version)
+        elif p.is_dir():
+            folder_contents = list(p.iterdir())
+            contents = "<!DOCTYPE html><html><body><ul>" + "\n".join([f"<li><a href='{route}/{f.name}'>{f.name}</a></li>" for f in folder_contents]) + "</ul></body></html>"
+            return Response(contents.encode(), version=request.version)
+        r = FileResponse(p, version=request.version)
+        print("content type", r.headers.get("Content-Type"))
+        return r
 
 class RouteHandler:
     default_favicon = Path(__file__).parent.parent / "resources" / "favicon.ico"
 
     def __init__(self,
                  routes: dict | None = None,
-                 variable_routes: dict | None = None,
                  fallback_handler=None,
                  base_path: str = "/",
                  require_tag: bool = False,
@@ -307,13 +356,15 @@ class RouteHandler:
         self.error_mode = error_mode
         self.favicon_path = favicon
 
-        self.routes = routes if isinstance(routes, dict) else {}
-        self.variadic_routes = variable_routes if isinstance(variable_routes, dict) else {}
-        for k in self.routes.copy():
-            if "{" in k and "}" in k:
-                self.variadic_routes[k] = self.routes.pop(k)
-        if routes and not isinstance(routes, dict):
-            self.parse_routes_from_object(routes)
+        self.routes = {}
+        self.matchable_routes = {}
+        self.variadic_routes = {}
+        if routes:
+            if isinstance(routes, dict):
+                for k, v in routes.items():
+                    self[k] = v
+            else:
+                self.parse_routes_from_object(routes)
         self.fallback_handler = wrap_handler(fallback_handler) if fallback_handler else None
 
         op = wrap_handler(self.openapi, error_mode=error_mode)
@@ -364,13 +415,13 @@ class RouteHandler:
 
     @get
     def playground_panels_js(self) -> Path:
-        return Path(__file__).parent.parent / "resources" / "playground" /  "panels.js"
+        return Path(__file__).parent.parent / "resources" / "playground" / "panels.js"
 
     def parse_routes_from_object(self, obj):
         for k in dir(obj):
             if not k.startswith("_"):
                 v = getattr(obj, k)
-                if callable(v) and not isinstance(v, type):
+                if callable(v):
                     if self.require_tag and not hasattr(v, "allowed_methods"):
                         continue
                     if getattr(v, "do_not_serve", False):
@@ -385,43 +436,49 @@ class RouteHandler:
         handler = self.routes.get(route, None)
         route_params = {}
         if handler is None:
-            if route in self.default_routes:
-                handler = self.default_routes[route]
+            print("matchable_routes", self.matchable_routes)
+            for k, v in self.matchable_routes.items():
+                if v.match(route):
+                    handler = v
+                    break
             else:
-                # check all variadic routes
-                route_parts = route.split("/")
-                n = len(route_parts)
-                for k, v in self.variadic_routes.items():
-                    # these are in format /a/{b}/c/{d}/e, convert to regexp groups
-                    parts = k.split("/")
-                    if n != len(parts):
-                        continue
-                    if all((route_parts[i] == parts[i]) or (parts[i].startswith("{") and parts[i].endswith("}")) for i in range(n)):
-                        handler = v
-                        route_params = {
-                            parts[i][1:-1]: route_parts[i]
-                            for i in range(n)
-                            if parts[i].startswith("{") and parts[i].endswith("}")
-                        }
-                        break
+                if route in self.default_routes:
+                    handler = self.default_routes[route]
                 else:
-                    handler = self.fallback_handler
-        print(route, handler)
+                    # check all variadic routes
+                    route_parts = route.split("/")
+                    n = len(route_parts)
+                    for k, v in self.variadic_routes.items():
+                        # these are in format /a/{b}/c/{d}/e, convert to regexp groups
+                        parts = k.split("/")
+                        if n != len(parts):
+                            continue
+                        if all((route_parts[i] == parts[i]) or (parts[i].startswith("{") and parts[i].endswith("}")) for i in range(n)):
+                            handler = v
+                            route_params = {
+                                parts[i][1:-1]: route_parts[i]
+                                for i in range(n)
+                                if parts[i].startswith("{") and parts[i].endswith("}")
+                            }
+                            break
+                    else:
+                        handler = self.fallback_handler
+
+        if handler is None:
+            # send a response with 404
+            return Response(b'Not Found',
+                            status_code=404,
+                            headers={"Content-Type": "text/plain"},
+                            version=request.version)
         allowed_methods = gettag(handler, "allowed_methods", None)
-        print(route, handler, handler.__dict__, allowed_methods)
         # if allowed_methods is None:
         #     print(handler, handler.__dict__)
         if request.method == "HEAD" and "GET" in allowed_methods:
             allowed_methods = list(allowed_methods) + ["HEAD"]
         if allowed_methods is None or request.method not in allowed_methods:
+            print("Method Not Allowed", route, request.method, allowed_methods, handler)
             return Response(b'Method Not Allowed',
                             status_code=405,
-                            headers={"Content-Type": "text/plain"},
-                            version=request.version)
-        if handler is None:
-            # send a response with 404
-            return Response(b'Not Found',
-                            status_code=404,
                             headers={"Content-Type": "text/plain"},
                             version=request.version)
         if route_params:
@@ -431,6 +488,9 @@ class RouteHandler:
         return r
 
     def route(self, handler, route: str | None = None, allowed_methods: tuple[str] | None = None):
+        if isinstance(handler, Path):
+            handler = StaticFileHandler(Path, route)
+
         if isinstance(handler, str):
             return lambda handler: self.route(handler, route, allowed_methods)
 
@@ -445,6 +505,8 @@ class RouteHandler:
             route = route[1:]
         if "{" in route and "}" in route:
             self.variadic_routes[self.base_path + route] = h
+        elif hasattr(h, "match") and callable(h.match):
+            self.matchable_routes[self.base_path + route] = h
         else:
             self.routes[self.base_path + route] = h
 

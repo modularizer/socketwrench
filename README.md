@@ -10,9 +10,11 @@ pip install socketwrench
 
 ### Serve a class
 ```python
-from socketwrench import serve
+from socketwrench import serve, StaticFileHandler
 
 class MyServer:
+    src = StaticFileHandler(Path(__file__).parent.parent.parent)
+    
     def hello(self):
         return "world"
   
@@ -94,8 +96,8 @@ Add a custom function to handle any requests that don't match any other routes.
 # Planned Features
 * [ ] Implement nesting / recursion to serve deeper routes and/or multiple classes
 * [ ] Enforce OpenAPI spec with better error responses
-* [ ] Serve static folders
-* [ ] Make a better playground for testing endpoints
+* [x] Serve static folders
+* [x] Make a better playground for testing endpoints
 * [ ] Make a client-side python proxy object to make API requests from python
 * [ ] Test on ESP32 and other microcontrollers
 * [ ] Ideas? Let me know!

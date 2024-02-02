@@ -512,6 +512,10 @@ class FileResponse(Response):
             return "text/x-asm"
         elif suffix == "bat":
             return "text/x-batch"
+        elif suffix == "toml":
+            return "application/toml"
+        elif suffix in ["in", "ini", "cfg"]:
+            return "text"
         else:
             return "application/octet-stream"
 

@@ -1,12 +1,15 @@
 import logging
 from pathlib import Path
 
+from socketwrench.handlers import StaticFileHandler
 from socketwrench.tags import private, post, put, patch, delete, route, methods
 
 logging.basicConfig(level=logging.DEBUG)
 
 
 class Sample:
+    src = StaticFileHandler(Path(__file__).parent.parent.parent)
+
     def hello(self):
         """A simple hello world function."""
         return "world"
