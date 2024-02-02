@@ -10,10 +10,10 @@ def tag(handler=None, **kwargs):
     return handler
 
 
-def get_tag(handler, tag_name):
+def gettag(handler, tag_name, default=None):
     if hasattr(handler, "__dict__") and tag_name in handler.__dict__:
         return handler.__dict__[tag_name]
-    return None
+    return default
 
 
 def methods(*methods):

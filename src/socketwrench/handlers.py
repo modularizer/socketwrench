@@ -7,7 +7,7 @@ from contextlib import suppress
 from functools import wraps
 from pathlib import Path
 
-from socketwrench.tags import tag, get
+from socketwrench.tags import tag, get, gettag
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
     HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse
 
@@ -169,8 +169,14 @@ def preprocess_args(_handler):
             special_params[key].append(name)
         elif param.annotation is inspect._empty and param.name in available_types:
             special_params[param.name].append(name)
-        elif param.name in available_types and not issubclass(param.annotation, available_types[param.name]):
-            raise ValueError(f"Parameter '{param.name}' must be typed as {available_types[param.name]}, not {param.annotation}.")
+        elif param.name in available_types:
+            a = param.annotation
+            t = available_types[param.name]
+            if isinstance(a, str):
+                if a != t.__name__ and a not in [_t.__name__ for _t in t.__subclasses()]:
+                    raise ValueError(f"Parameter '{param.name}' of {_handler} must be typed as {available_types[param.name]}, not {param.annotation}.")
+            elif not a is t or issubclass(a, t):
+                raise ValueError(f"Parameter '{param.name}' of {_handler} must be typed as {available_types[param.name]}, not {param.annotation}.")
 
         if collector_found:
             pass
@@ -258,7 +264,7 @@ def wrap_handler(_handler, error_mode: str = ErrorModes.HIDE):
                     response = Response(r.phrase(), status_code=r, version=request.version)
                 else:
                     try:
-                        if issubclass(return_annotation, Response):
+                        if (not isinstance(return_annotation, str)) and issubclass(return_annotation, Response):
                             response = return_annotation(r)
                         else:
                             response = Response(r, version=request.version)
@@ -319,9 +325,12 @@ class RouteHandler:
             "/swagger": sw,
             "/docs": sw,
             "/swagger-ui": sw,
+            "/api": wrap_handler(self.playground, error_mode=error_mode),
+            "/api/playground.js": wrap_handler(self.playground_js, error_mode=error_mode),
+            "/api/panels.js": wrap_handler(self.playground_panels_js, error_mode=error_mode),
         }
         if self.favicon_path:
-            self.default_routes["/favicon.ico"] = wrap_handler(self.favicon, error_mode=error_mode),
+            self.default_routes["/favicon.ico"] = wrap_handler(self.favicon, error_mode=error_mode)
 
     @get
     def openapi(self) -> str:
@@ -336,7 +345,7 @@ class RouteHandler:
     @get
     def favicon(self, request: Request) -> Response:
         try:
-            r = FileResponse(self.favicon, version=request.version)
+            r = FileResponse(self.favicon_path, version=request.version)
         except Exception as e:
             r = Response(b"Not Found", status_code=404, version=request.version)
         return r
@@ -345,6 +354,17 @@ class RouteHandler:
     def swagger(self) -> FileResponse:
         return FileResponse(Path(__file__).parent.parent / "resources" / "swagger.html")
 
+    @get
+    def playground(self) -> Path:
+        return Path(__file__).parent.parent / "resources" / "playground" / "playground.html"
+
+    @get
+    def playground_js(self) -> Path:
+        return Path(__file__).parent.parent / "resources" / "playground" /  "playground.js"
+
+    @get
+    def playground_panels_js(self) -> Path:
+        return Path(__file__).parent.parent / "resources" / "playground" /  "panels.js"
 
     def parse_routes_from_object(self, obj):
         for k in dir(obj):
@@ -386,7 +406,11 @@ class RouteHandler:
                         break
                 else:
                     handler = self.fallback_handler
-        allowed_methods = getattr(handler, "allowed_methods", None)
+        print(route, handler)
+        allowed_methods = gettag(handler, "allowed_methods", None)
+        print(route, handler, handler.__dict__, allowed_methods)
+        # if allowed_methods is None:
+        #     print(handler, handler.__dict__)
         if request.method == "HEAD" and "GET" in allowed_methods:
             allowed_methods = list(allowed_methods) + ["HEAD"]
         if allowed_methods is None or request.method not in allowed_methods:

@@ -2,6 +2,7 @@ import inspect
 from pathlib import Path
 
 from socketwrench import FileResponse, Response
+from socketwrench.tags import gettag
 
 
 def openapi_schema(routes_dict):
@@ -13,6 +14,7 @@ def openapi_schema(routes_dict):
         },
         "paths": {}
     }
+
 
     for route_name, func in routes_dict.items():
         route_info = getattr(func, "openapi", {}) or {}
@@ -138,6 +140,13 @@ def openapi_schema(routes_dict):
                     }
                 }
 
+        if "tags" not in route_info:
+            tags = getattr(func, "tags", []) or []
+            if gettag(func, "do_not_serve", False):
+                tags.append("private")
+            route_info["tags"] = tags
+
+        openapi["paths"][route_name] = {}
         for method in allowed_methods:
-            openapi["paths"][route_name] = {method.lower(): route_info}
+            openapi["paths"][route_name][method.lower()] = route_info
     return openapi

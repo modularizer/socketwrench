@@ -34,7 +34,7 @@ class Server(socket.socket):
                  accept_sleep: float = default_accept_sleep,
                  fallback_handler=None,
                  serve: bool = True,
-                 favicon: str | Path = default_favicon,
+                 favicon: str | Path = default_favicon
                  ):
         """A simple HTTP server built directly on top of socket.socket.
 
@@ -142,7 +142,7 @@ class Server(socket.socket):
 
         self.bind((self.host, self.port))
         self.listen(self.backlog)
-        logger.info(f"Serving HTTP on port {self.port}...")
+        logger.info("Serving HTTP on port " + str(self.port) + "...")
         logger.info(f"Press Ctrl+C to stop the server.")
         logger.info(f"Go to http://{self.host or 'localhost'}:{self.port}/swagger to see documentation.")
 
