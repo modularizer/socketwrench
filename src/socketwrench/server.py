@@ -145,6 +145,7 @@ class Server(socket.socket):
         logger.info("Serving HTTP on port " + str(self.port) + "...")
         logger.info(f"Press Ctrl+C to stop the server.")
         logger.info(f"Go to http://{self.host or 'localhost'}:{self.port}/swagger to see documentation.")
+        logger.info(f"Go to http://{self.host or 'localhost'}:{self.port}/api for an api playground.")
 
         while cleanup_event is None or (not cleanup_event.is_set()):
             if self.pause_sleep and pause_event is not None:
