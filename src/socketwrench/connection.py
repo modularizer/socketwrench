@@ -65,10 +65,7 @@ class Connection:
         return r
 
     def send_response(self, connection_socket: socket.socket, response: Response):
-        # connection_socket.send(response.pre_body_bytes)
-        # connection_socket.send(response.body)
-        logger.info(f"{response}\n")
-        connection_socket.send(response)
+        connection_socket.send(bytes(response))
         connection_socket.close()
 
     def check_cleanup(self):
