@@ -19,7 +19,8 @@ from .types import (
     Method,
     File,
     ClientAddr,
-    Headers
+    Headers,
+    set_default_error_mode
 )
 from .tags import (
     tag,

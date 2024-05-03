@@ -87,6 +87,13 @@ def a(self, b, c=5):
 * `"short"` or `ErrorModes.SHORT`: returns the python error message but no traceback in the response body when an error occurs.
 * `"traceback"` or `ErrorModes.TRACEBACK` or `ErrorModes.LONG` or `ErrorModes.TB`: returns the full traceback in the response body when an error occurs.
 
+To set the default error mode for all functions, use `set_default_error_mode`.
+```python
+from socketwrench import set_default_error_mode, ErrorModes
+
+set_default_error_mode(ErrorModes.TRACEBACK) # equivalent to ErrorModes=ErorModes.TRACEBACK
+```
+
 ### favicon.ico
 No need to use our favicon! pass a `str | Path` `.ico` filepath to `favicon` argument to use your own favicon. Alternatively, tag `@route('/favicon.ico')` on a function returning the path.
 

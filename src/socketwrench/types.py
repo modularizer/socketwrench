@@ -291,6 +291,7 @@ class ResponseType(type):
 
 class Response(metaclass=ResponseType):
     default_content_type = None
+
     def __new__(cls, body: bytes | ResponseBody = ResponseBody.EMPTY,
                 status_code: int | HTTPStatusCode = HTTPStatusCode.OK,
                 headers: bytes | HeaderBytes | Headers | dict = HeaderBytes.EMPTY,
@@ -347,14 +348,89 @@ class Response(metaclass=ResponseType):
 
 
 class FileResponse(Response):
+    content_types = {
+        "html": "text/html",
+        "css": "text/css",
+        "js": "application/javascript",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "svg": "image/svg+xml",
+        "bmp": "image/bmp",
+        "tiff": "image/tiff",
+        "ico": "image/x-icon",
+        "webp": "image/webp",
+        "stl": "model/stl",
+        "obj": "model/obj",
+        "fbx": "model/fbx",
+        "glb": "model/gltf-binary",
+        "gltf": "model/gltf+json",
+        "3ds": "model/3ds",
+        "3mf": "model/3mf",
+        "json": "application/json",
+        "yml": "application/x-yaml",
+        "yaml": "application/x-yaml",
+        "doc": "application/msword",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls": "application/vnd.ms-excel",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ppt": "application/vnd.ms-powerpoint",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "odt": "application/vnd.oasis.opendocument.text",
+        "ods": "application/vnd.oasis.opendocument.spreadsheet",
+        "odp": "application/vnd.oasis.opendocument.presentation",
+        "odg": "application/vnd.oasis.opendocument.graphics",
+        "odf": "application/vnd.oasis.opendocument.formula",
+        "pdf": "application/pdf",
+        "zip": "application/zip",
+        "tar": "application/x-tar",
+        "gz": "application/gzip",
+        "mp3": "audio/mpeg",
+        "mp4": "video/mp4",
+        "webm": "video/webm",
+        "ogg": "audio/ogg",
+        "wav": "audio/wav",
+        "txt": "text/plain",
+        "csv": "text/csv",
+        "xml": "text/xml",
+        "md": "text/markdown",
+        "py": "text/x-python",
+        "c": "text/x-c",
+        "cpp": "text/x-c++",
+        "h": "text/x-c-header",
+        "hs": "text/x-haskell",
+        "java": "text/x-java",
+        "sh": "text/x-shellscript",
+        "bat": "text/x-batch",
+        "ps1": "text/x-powershell",
+        "rb": "text/x-ruby",
+        "rs": "text/x-rust",
+        "go": "text/x-go",
+        "php": "text/x-php",
+        "pl": "text/x-perl",
+        "swift": "text/x-swift",
+        "asm": "text/x-asm",
+        "toml": "application/toml",
+        "ini": "text/x-ini",
+        "cfg": "text/x-config",
+        "conf": "text/x-config",
+        "gitignore": "text/x-gitignore",
+        "dockerfile": "text/x-dockerfile",
+        None: "application/octet-stream"
+    }
+
     default_content_type = None
 
     def __new__(cls, *args, **kwargs):
         return super().__new__(cls)
 
     def __init__(self,
-                 path: str | Path,
+                 *a,
+                 body: bytes = b"",
+                 path: str | Path = None,
                  filename: str | None = None,
+                 extension: str | None = None,
                  status_code: int = 200,
                  headers: dict = None,
                  content_type: str | None = None,
@@ -362,9 +438,48 @@ class FileResponse(Response):
                  version: str = "HTTP/1.1"):
         if content_type is None and self.default_content_type is not None:
             content_type = self.default_content_type
-        path = Path(path)
+        if content_type is None and extension is not None:
+            content_type = self.get_content_type(extension.lstrip("."))
+
+        if a:
+            if len(a) == 1:
+                if isinstance(a[0], str):
+                    if Path(a[0]).exists():
+                        path = Path(a[0])
+                    else:
+                        body = a[0].encode()
+                elif isinstance(a[0], Path):
+                    path = a[0]
+                else:
+                    body = a[0]
+
+        path = Path(path) if path else Path(".")
         if filename is None:
-            filename = path.name
+            if path:
+                filename = path.name
+            elif extension:
+                filename = "file." + extension.lstrip(".")
+            elif content_type:
+                filename = "file" + self.get_extension(content_type)
+            else:
+                filename = "file"
+        if path and body:
+            raise ValueError("Cannot have both a path and data.")
+        if not path and not body:
+            raise ValueError("Must have either a path or data.")
+        if body:
+            if isinstance(body, str):
+                body = body.encode()
+            elif isinstance(body, bytes):
+                pass
+            elif isinstance(a[0], (bytearray, memoryview)):
+                body = bytes(a[0])
+            elif hasattr(a[0], "read"):
+                body = a[0].read()
+            elif isinstance(a[0], dict):
+                body = json.dumps(a[0]).encode()
+            else:
+                raise ValueError(f"Invalid argument: {a[0]}")
 
         if headers is None:
             headers = {}
@@ -392,7 +507,7 @@ class FileResponse(Response):
                                  headers=headers,
                                  content_type="application/zip",
                                  version=version)
-        else:
+        elif path:
             if content_type is None:
                 content_type = self.get_content_type(path.suffix[1:])
 
@@ -407,117 +522,21 @@ class FileResponse(Response):
                              headers=headers,
                              content_type=content_type,
                              version=version)
+        else:
+            super().__init__(body,
+                             status_code=status_code,
+                             headers=headers,
+                             content_type=content_type,
+                             version=version)
 
     def get_content_type(self, suffix: str):
-        suffix = suffix.lower()
-        if suffix == "html":
-            return "text/html"
-        elif suffix == "css":
-            return "text/css"
-        elif suffix == "js":
-            return "application/javascript"
-        elif suffix == "png":
-            return "image/png"
-        elif suffix == "jpg" or suffix == "jpeg":
-            return "image/jpeg"
-        elif suffix == "gif":
-            return "image/gif"
-        elif suffix == "svg":
-            return "image/svg+xml"
-        elif suffix == "ico":
-            return "image/x-icon"
-        elif suffix == "json":
-            return "application/json"
-        elif suffix == "yml" or suffix == "yaml":
-            return "application/x-yaml"
-        elif suffix == "doc":
-            return "application/msword"
-        elif suffix == "docx":
-            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        elif suffix == "xls":
-            return "application/vnd.ms-excel"
-        elif suffix == "xlsx":
-            return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        elif suffix == "ppt":
-            return "application/vnd.ms-powerpoint"
-        elif suffix == "pptx":
-            return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        elif suffix == "odt":
-            return "application/vnd.oasis.opendocument.text"
-        elif suffix == "ods":
-            return "application/vnd.oasis.opendocument.spreadsheet"
-        elif suffix == "odp":
-            return "application/vnd.oasis.opendocument.presentation"
-        elif suffix == "odg":
-            return "application/vnd.oasis.opendocument.graphics"
-        elif suffix == "odf":
-            return "application/vnd.oasis.opendocument.formula"
-        elif suffix == "pdf":
-            return "application/pdf"
-        elif suffix == "zip":
-            return "application/zip"
-        elif suffix == "tar":
-            return "application/x-tar"
-        elif suffix == "gz":
-            return "application/gzip"
-        elif suffix == "mp3":
-            return "audio/mpeg"
-        elif suffix == "mp4":
-            return "video/mp4"
-        elif suffix == "webm":
-            return "video/webm"
-        elif suffix == "ogg":
-            return "audio/ogg"
-        elif suffix == "wav":
-            return "audio/wav"
-        elif suffix == "txt":
-            return "text/plain"
-        elif suffix == "csv":
-            return "text/csv"
-        elif suffix == "xml":
-            return "text/xml"
-        elif suffix == "md":
-            return "text/markdown"
-        elif suffix == "py":
-            return "text/x-python"
-        elif suffix == "c":
-            return "text/x-c"
-        elif suffix == "cpp":
-            return "text/x-c++"
-        elif suffix == "h":
-            return "text/x-c-header"
-        elif suffix == "hs":
-            return "text/x-haskell"
-        elif suffix == "java":
-            return "text/x-java"
-        elif suffix == "sh":
-            return "text/x-shellscript"
-        elif suffix == "bat":
-            return "text/x-batch"
-        elif suffix == "ps1":
-            return "text/x-powershell"
-        elif suffix == "rb":
-            return "text/x-ruby"
-        elif suffix == "rs":
-            return "text/x-rust"
-        elif suffix == "go":
-            return "text/x-go"
-        elif suffix == "php":
-            return "text/x-php"
-        elif suffix == "pl":
-            return "text/x-perl"
-        elif suffix == "swift":
-            return "text/x-swift"
-        elif suffix == "asm":
-            return "text/x-asm"
-        elif suffix == "bat":
-            return "text/x-batch"
-        elif suffix == "toml":
-            return "application/toml"
-        elif suffix in ["in", "ini", "cfg"]:
-            return "text"
-        else:
-            return "application/octet-stream"
+        return self.content_types.get(suffix.lower(), self.content_types[self.default_content_type])
+
+    def get_extension(self, content_type: str):
+        for k, v in self.content_types.items():
+            if v == content_type:
+                return "." + k
+        return ""
 
 
 class HTMLResponse(Response):
@@ -584,6 +603,7 @@ class ErrorResponse(Response):
             headers["Content-Type"] = "text/plain"
         super().__init__(error, status_code, headers, version)
 
+
 class RedirectResponse(Response):
     def __init__(self, location: str, status_code: int = 307, headers: dict = None, version: str = "HTTP/1.1"):
         if headers is None:
@@ -603,20 +623,21 @@ class PermanentRedirect(RedirectResponse):
         super().__init__(location, status_code, headers, version)
 
 
-
-
-
 class Query(dict):
     pass
+
 
 class Route(str):
     pass
 
+
 class FullPath(str):
     pass
 
+
 class Method(str):
     pass
+
 
 class File(bytes):
     pass
@@ -627,3 +648,11 @@ class ErrorModes:
     TYPE = "type"
     SHORT = "short"
     TRACEBACK = TB = LONG = SHOW = "traceback"
+
+    DEFAULT = HIDE
+
+
+def set_default_error_mode(mode: str):
+    if mode not in [ErrorModes.HIDE, ErrorModes.TYPE, ErrorModes.SHORT, ErrorModes.TRACEBACK]:
+        raise ValueError(f"Invalid error mode: {mode}. Options are 'hide', 'type', 'short', 'traceback'.")
+    ErrorModes.DEFAULT = mode

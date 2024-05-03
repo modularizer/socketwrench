@@ -239,7 +239,7 @@ def preprocess_args(_handler):
     return parser
 
 @tag(accepts_route_params=True)
-def wrap_handler(_handler, error_mode: str = ErrorModes.HIDE):
+def wrap_handler(_handler, error_mode: str = None):
     """Converts any method into a method that takes a Request and returns a Response."""
     if getattr(_handler, "is_wrapped", False):
         return _handler
@@ -272,13 +272,14 @@ def wrap_handler(_handler, error_mode: str = ErrorModes.HIDE):
                         response = Response(r, version=request.version)
         except Exception as e:
             logger.exception(e)
-            if error_mode == ErrorModes.HIDE:
+            _error_mode = error_mode if error_mode is not None else ErrorModes.DEFAULT
+            if _error_mode == ErrorModes.HIDE:
                 msg = b'Internal Server Error'
-            elif error_mode == ErrorModes.TYPE:
+            elif _error_mode == ErrorModes.TYPE:
                 msg = str(type(e)).encode()
-            elif error_mode == ErrorModes.SHORT:
+            elif _error_mode == ErrorModes.SHORT:
                 msg = str(e).encode()
-            elif error_mode == ErrorModes.LONG:
+            elif _error_mode == ErrorModes.LONG:
                 msg = traceback.format_exc().encode()
             response = ErrorResponse(msg, version=request.version)
         return response
