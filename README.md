@@ -2,6 +2,9 @@
 A webserver based on `socket.socket` with no dependencies other than the standard library.
 Provides a lightweight quickstart to make an API which supports OpenAPI, Swagger, and more.
 
+## NOTE:
+this is **not** a production-ready web server. It is a learning tool and a lightweight way to make a simple API. While I attempted to reduce overhead in calls, I haven't taken time to thoroughly optimize, and I have not implemented any complex features to deal with security, performance, or scalability.
+
 ## Project Goals
 Part of the goal of this project was to understand how web servers work and to make a simple web server that is easy to use and understand.
 As learning progressed, features were added, but the code became a bit more complex.
