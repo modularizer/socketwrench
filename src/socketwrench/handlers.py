@@ -341,7 +341,9 @@ class StaticFileHandler(MatchableHandlerABC):
         return r
 
 class RouteHandler:
-    default_favicon = Path(__file__).parent.parent / "resources" / "favicon.ico"
+    resources_folder = Path(__file__).parent / "resources"
+    playground_folder = resources_folder / "playground"
+    default_favicon = resources_folder / "favicon.ico"
 
     def __init__(self,
                  routes: dict | None = None,
@@ -403,19 +405,19 @@ class RouteHandler:
 
     @get
     def swagger(self) -> FileResponse:
-        return FileResponse(Path(__file__).parent.parent / "resources" / "swagger.html")
+        return FileResponse(Path(__file__).parent / "resources" / "swagger.html")
 
     @get
     def playground(self) -> Path:
-        return Path(__file__).parent.parent / "resources" / "playground" / "playground.html"
+        return self.playground_folder / "playground.html"
 
     @get
     def playground_js(self) -> Path:
-        return Path(__file__).parent.parent / "resources" / "playground" /  "playground.js"
+        return self.playground_folder /  "playground.js"
 
     @get
     def playground_panels_js(self) -> Path:
-        return Path(__file__).parent.parent / "resources" / "playground" / "panels.js"
+        return self.playground_folder / "panels.js"
 
     def parse_routes_from_object(self, obj):
         for k in dir(obj):
@@ -436,7 +438,6 @@ class RouteHandler:
         handler = self.routes.get(route, None)
         route_params = {}
         if handler is None:
-            print("matchable_routes", self.matchable_routes)
             for k, v in self.matchable_routes.items():
                 if v.match(route):
                     handler = v

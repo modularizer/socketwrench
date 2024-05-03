@@ -20,7 +20,7 @@ class Server(socket.socket):
     default_socket_options = None
     default_pause_sleep = 0.1
     default_accept_sleep = 0.1
-    default_favicon = Path(__file__).parent.parent / "resources" / "favicon.ico"
+    default_favicon = RouteHandler.default_favicon
 
     def __init__(self,
                  routes: dict | None = None,
