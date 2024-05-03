@@ -2,6 +2,13 @@
 A webserver based on `socket.socket` with no dependencies other than the standard library.
 Provides a lightweight quickstart to make an API which supports OpenAPI, Swagger, and more.
 
+## Project Goals
+Part of the goal of this project was to understand how web servers work and to make a simple web server that is easy to use and understand.
+As learning progressed, features were added, but the code became a bit more complex.
+To learn more about the basics of web servers and how to develop one from scratch, see [learning.md](./learning.md) or jump straight into the 
+building blocks of source code in [simplestsocketwrench.py](./src/simplestsocketwrench.py) => [simplesocketwrench.py](./src/simplesocketwrench.py) => [socketwrench](./src/socketwrench).
+If you would prefer to use this library, read on!
+
 # Quickstart
 ### Install
 ```bash
