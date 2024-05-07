@@ -81,7 +81,18 @@ def openapi_schema(routes_dict):
                 except:
                     pass
             if return_type is not inspect._empty:
-                if return_type is Path or issubclass(return_type, Path) or return_type is FileResponse or issubclass(return_type, FileResponse):
+                if return_type is None:
+                    route_info["responses"] = {
+                        "200": {
+                            "description": "Success",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"type": "object"}
+                                }
+                            }
+                        }
+                    }
+                elif return_type is Path or issubclass(return_type, Path) or return_type is FileResponse or issubclass(return_type, FileResponse):
                     content_type = getattr(return_type, "default_content_type", "application/octet-stream")
                     route_info["responses"] = {
                         "200": {
