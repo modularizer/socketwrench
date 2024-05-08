@@ -19,7 +19,7 @@ class Server(socket.socket):
     default_num_connection_threads = 1
     default_socket_options = None
     default_pause_sleep = 0.1
-    default_accept_sleep = 0.1
+    default_accept_sleep = 0
     default_favicon = RouteHandler.default_favicon
 
     def __init__(self,
