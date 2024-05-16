@@ -478,6 +478,12 @@ class FileResponse(Response):
                 body = bytes(a[0])
             elif hasattr(a[0], "read"):
                 body = a[0].read()
+            elif hasattr(a[0], "tobytes"):
+                body = a[0].tobytes()
+            elif hasattr(a[0], "to_bytes"):
+                body = a[0].to_bytes()
+            elif hasattr(a[0], "dumps"):
+                body = (a[0]).dumps().encode()
             elif isinstance(a[0], dict):
                 body = json.dumps(a[0]).encode()
             else:
