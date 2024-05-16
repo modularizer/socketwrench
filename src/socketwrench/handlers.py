@@ -219,7 +219,6 @@ def preprocess_args(_handler):
     get_autofill_kwargs = autofill.autofill(special_params)
 
     def parser(request: Request, route_params: dict = None) -> tuple[tuple, dict, type]:
-        print("parsing args", sig.parameters, route_params)
         route_params = cast_to_types(route_params, sig.parameters) if route_params else {}
         if not sig.parameters:
             return (), {}, sig.return_annotation
