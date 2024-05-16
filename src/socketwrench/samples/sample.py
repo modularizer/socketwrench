@@ -1,9 +1,12 @@
 import logging
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 from socketwrench.handlers import StaticFileHandler
 from socketwrench.tags import private, post, put, patch, delete, route, methods
-from socketwrench.types import TBDBResponse
+from socketwrench.types import TBDBResponse, FileTypeResponse
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -157,6 +160,11 @@ class Sample:
             {"x": 22, "y": 33, "z": 44},
             {"x": 55, "y": 66, "z": 77},
         ]
+
+    def random_img(self) -> FileTypeResponse("image/png", lambda x: cv2.imencode(".png", x.astype(np.uint8))[1].tobytes()):
+        x = np.random.rand(100, 100, 3) * 255
+        x = x.astype(np.uint8)
+        return x
 
 
 if __name__ == '__main__':

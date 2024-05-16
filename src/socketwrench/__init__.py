@@ -8,6 +8,7 @@ from .types import (
     JSONResponse,
     ErrorResponse,
     FileResponse,
+    FileTypeResponse,
     RedirectResponse,
     TemporaryRedirect,
     PermanentRedirect,
@@ -20,7 +21,9 @@ from .types import (
     File,
     ClientAddr,
     Headers,
-    set_default_error_mode
+    set_default_error_mode,
+    url_encode,
+    url_decode
 )
 from .tags import (
     tag,

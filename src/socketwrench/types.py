@@ -455,7 +455,7 @@ class FileResponse(Response):
                 else:
                     body = a[0]
 
-        path = Path(path) if path else Path(".")
+        path = Path(path) if path else Path(".") if not body else None
         if filename is None:
             if path:
                 filename = path.name
@@ -466,7 +466,7 @@ class FileResponse(Response):
             else:
                 filename = "file"
         if path and body:
-            raise ValueError("Cannot have both a path and data.")
+            raise ValueError(f"Cannot have both a path and data: {path}, {body}")
         if not path and not body:
             raise ValueError("Must have either a path or data.")
         if body:
@@ -497,11 +497,11 @@ class FileResponse(Response):
 
         # add headers related to file stats
         if "Content-Length" not in headers:
-            headers["Content-Length"] = str(path.stat().st_size)
+            headers["Content-Length"] = str(path.stat().st_size) if path else str(len(body))
         if "Last-Modified" not in headers:
-            headers["Last-Modified"] = datetime.datetime.fromtimestamp(path.stat().st_mtime).isoformat()
+            headers["Last-Modified"] = datetime.datetime.fromtimestamp(path.stat().st_mtime).isoformat() if path else datetime.datetime.now().isoformat()
 
-        if path.is_dir():
+        if path and path.is_dir():
             from tempfile import TemporaryFile
             from zipfile import ZipFile
             # zip the directory to a TemporaryFile
@@ -552,12 +552,42 @@ class FileResponse(Response):
 
 class FileTypeResponseMeta(type):
     def __getitem__(self, content_type):
+        return self.get_class(content_type)
+
+    @classmethod
+    def get_class(cls, content_type, write_function=None):
         # Create a new subclass of FileResponse with a custom content type
         if content_type[0] == "." and content_type[1:] in FileResponse.content_types:
             content_type = FileResponse.content_types[content_type[1:]]
 
         class TypedFileResponse(FileResponse):
             default_content_type = content_type
+
+            def __init__(self,
+                         *a,
+                         body: bytes = b"",
+                         path: str | Path = None,
+                         filename: str | None = None,
+                         extension: str | None = None,
+                         status_code: int = 200,
+                         headers: dict = None,
+                         content_type: str | None = None,
+                         download: bool = False,
+                         version: str = "HTTP/1.1"):
+                if write_function:
+                    r = write_function(*a)
+                    a = (r,)
+                super().__init__(*a,
+                                    body=body,
+                                    path=path,
+                                    filename=filename,
+                                    extension=extension,
+                                    status_code=status_code,
+                                    headers=headers,
+                                    content_type=content_type,
+                                    download=download,
+                                    version=version)
+
 
         # Generate a class name based on the content type
         ct_name = content_type.split("/")[-1].replace(".", "").replace("-", "").upper()
@@ -568,8 +598,10 @@ class FileTypeResponseMeta(type):
     def __subclasscheck__(self, subclass):
         return issubclass(subclass, FileResponse)
 
+
 class FileTypeResponse(metaclass=FileTypeResponseMeta):
-    pass
+    def __new__(cls, *args, **kwargs):
+        return FileTypeResponseMeta.get_class(*args, **kwargs)
 
 
 class HTMLResponse(Response):
