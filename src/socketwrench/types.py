@@ -302,21 +302,19 @@ class Response(metaclass=ResponseType):
             return body
 
         # Create an instance of the appropriate subclass based on the body type
-        if isinstance(body, (bytes, memoryview)):
-            return super(Response, cls).__new__(cls)
-        elif isinstance(body, str) and issubclass(cls, RedirectResponse):
-            return super(Response, RedirectResponse).__new__(RedirectResponse)
-        elif isinstance(body, str) and issubclass(cls, HTMLResponse):
-            return super(Response, HTMLResponse).__new__(HTMLResponse)
-        elif isinstance(body, Path) and not issubclass(cls, FileResponse):
-            return super(Response, FileResponse).__new__(FileResponse)
-        elif isinstance(body, Exception) and not issubclass(cls, ErrorResponse):
-            return super(Response, ErrorResponse).__new__(ErrorResponse)
-        else:
-            if not issubclass(cls, JSONResponse):
-                return super(Response, JSONResponse).__new__(JSONResponse)
-            else:
+        if cls is Response:
+            if isinstance(body, (bytes, memoryview)):
                 return super(Response, cls).__new__(cls)
+            elif isinstance(body, str):
+                return super(Response, HTMLResponse).__new__(HTMLResponse)
+            elif isinstance(body, Path):
+                return super(Response, FileResponse).__new__(FileResponse)
+            elif isinstance(body, Exception):
+                return super(Response, ErrorResponse).__new__(ErrorResponse)
+            else:
+                return super(Response, JSONResponse).__new__(JSONResponse)
+        else:
+            return super(Response, cls).__new__(cls)
 
     def __init__(self,
                  body: bytes | ResponseBody = ResponseBody.EMPTY,
