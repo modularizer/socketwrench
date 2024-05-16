@@ -129,6 +129,27 @@ class Sample:
         return f"captured b={b}, c={c}"
 
 
+    @route("{misc}")
+    def misc(self, misc):
+        return f"misc={misc}"
+
+    @route("/a/{b}_is1/c/{d}_is1")
+    def a_c1(self, b, d):
+        return f"a_c1: b={b}, d={d}"
+
+    @route("/a/{b}/c/{d}")
+    def a_c(self, b, d):
+        return f"a_c: b={b}, d={d}"
+
+    @route("/a/{b}_is2/c/{d}_is2")
+    def a_c2(self, b, d):
+        return f"a_c2: b={b}, d={d}"
+
+    @route("/a/{b}_is2/c/{d}_is{e}")
+    def a_c3(self, b, d, e):
+        return f"a_c3: b={b}, d={d}, e={e}"
+
+
 if __name__ == '__main__':
     from socketwrench import serve
     s = Sample()

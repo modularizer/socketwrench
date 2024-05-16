@@ -9,7 +9,7 @@ from pathlib import Path
 
 from socketwrench.tags import tag, get, gettag
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
-    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, HTMLResponse
+    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, HTMLResponse, url_decode
 
 logger = logging.getLogger("socketwrench")
 
@@ -336,7 +336,6 @@ class StaticFileHandler(MatchableHandlerABC):
 
     def match(self, route: str) -> bool:
         if not route.startswith(self.route):
-            print("route doesn't start with", self.route, route)
             return False
         added = route[len(self.route):]
         p = (self.path / added.strip("/")) if added else self.path
@@ -363,6 +362,115 @@ class StaticFileHandler(MatchableHandlerABC):
         r = FileResponse(p, version=request.version)
         print("content type", r.headers.get("Content-Type"))
         return r
+
+
+def matches_variadic_route(route: str, variadic_route: str) -> dict:
+    try:
+        route_parts = route.split("/")
+        variadic_parts = variadic_route.split("/")
+        n = len(route_parts)
+        if n != len(variadic_parts):
+            return False
+
+        found_matches = {}
+        identical_characters = 0
+        for i in range(n):
+            r = route_parts[i]
+            v = variadic_parts[i]
+            if r == v:
+                identical_characters += len(r)
+            else:
+                if not ('{' in v and '}' in v):
+                    return False
+                sections = []
+                current_section = {}
+                for c in v:
+                    if c == "{":
+                        if current_section.get("variadic", False):
+                            return False
+                        sections.append(current_section)
+                        current_section = {"variadic": True, "value": ""}
+                    elif c == "}":
+                        if not current_section.get("variadic", True):
+                            return False
+                        sections.append(current_section)
+                        current_section = {"variadic": False, "value": ""}
+                    else:
+                        if not current_section:
+                            current_section = {"variadic": False, "value": ""}
+                        current_section["value"] += c
+                sections.append(current_section)
+                sections = [s for s in sections if s]
+                sections = [s for s in sections if s["value"]]
+                if len(sections) == 1 and not sections[0]["variadic"]:
+                    found_matches[sections[0]["value"]] = r
+                    continue
+                # make sure they alternate
+                if not all([s["variadic"] != sections[i + 1]["variadic"] for i, s in enumerate(sections[:-1])]):
+                    raise ValueError("Variadic sections must alternate")
+
+                if any(s["value"] in found_matches and s["variadic"] for s in sections):
+                    raise ValueError("Variadic sections must be unique")
+
+                nonvariadic_start = 0
+                nonvariadic_end = 0
+                variadic_name = None
+                variables = {}
+                for section in sections:
+                    if section["variadic"]:
+                        variadic_name = section["value"]
+                        continue
+                    else:
+                        if section["value"] not in r[nonvariadic_end:]:
+                            return False
+                        identical_characters += len(section["value"])
+                        i = r[nonvariadic_end:].index(section["value"])
+                        nonvariadic_start = nonvariadic_end + i
+                        if variadic_name:
+                            variables[variadic_name] = r[nonvariadic_end:nonvariadic_start]
+
+                        nonvariadic_end = nonvariadic_start + len(section["value"])
+
+                        nv = r[nonvariadic_start:nonvariadic_end]
+                        if nv != section["value"]:
+                            raise ValueError(f"Expected {section['value']} but got {nv}")
+                        nonvariadic_start = nonvariadic_end
+                if sections[-1]["variadic"]:
+                    variables[variadic_name] = r[nonvariadic_end:]
+                elif nonvariadic_end < len(r):
+                    return False
+                found_matches.update(variables)
+        return found_matches
+    except Exception as e:
+        print("Error", e)
+        print(str(traceback.format_exc()))
+        return False
+
+def sort_variadic_routes(patterns):
+    q = []
+    for pattern in patterns:
+        parts = pattern.split("/")
+        part_count = len(parts)
+        variadic_part_count = len([p for p in parts if "{" in p and "}" in p])
+        nonvariadic_part_count = part_count - variadic_part_count
+        total_variadic_pattern_count = sum([1 * (c=='{') for c in pattern])
+        total_nonvariadic_chars = 0
+        in_variadic = False
+        for c in pattern:
+            if c == "{":
+                in_variadic = True
+            elif c == "}":
+                in_variadic = False
+            elif not in_variadic:
+                total_nonvariadic_chars += 1
+        q.append((part_count,
+                  nonvariadic_part_count,
+                  total_nonvariadic_chars,
+                  total_variadic_pattern_count,
+                  len(pattern),
+                  pattern))
+    sorted_patterns = [_v[-1] for _v in reversed(sorted(q))]
+    return sorted_patterns
 
 class RouteHandler:
     resources_folder = Path(__file__).parent / "resources"
@@ -469,22 +577,17 @@ class RouteHandler:
             else:
                 if route in self.default_routes:
                     handler = self.default_routes[route]
+                elif "{" in (x:= url_decode(route)) and x in self.variadic_routes:
+                    raise ValueError(f"Route {route} is variadic , {{}} patterns should be filled in")
                 else:
-                    # check all variadic routes
-                    route_parts = route.split("/")
-                    n = len(route_parts)
-                    for k, v in self.variadic_routes.items():
+                    # check all variadic routes in the correct order, first by number of parts, then number of variadic parts, then length of nonvariadic parts
+                    variadic_patterns = sort_variadic_routes(list(self.variadic_routes.keys()))
+
+                    for k in variadic_patterns:
                         # these are in format /a/{b}/c/{d}/e, convert to regexp groups
-                        parts = k.split("/")
-                        if n != len(parts):
-                            continue
-                        if all((route_parts[i] == parts[i]) or (parts[i].startswith("{") and parts[i].endswith("}")) for i in range(n)):
-                            handler = v
-                            route_params = {
-                                parts[i][1:-1]: route_parts[i]
-                                for i in range(n)
-                                if parts[i].startswith("{") and parts[i].endswith("}")
-                            }
+                        route_params = matches_variadic_route(route, k)
+                        if route_params:
+                            handler = self.variadic_routes[k]
                             break
                     else:
                         handler = self.fallback_handler
