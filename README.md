@@ -115,6 +115,16 @@ Add a custom function to handle any requests that don't match any other routes.
 * [ ] Enforce OpenAPI spec with better error responses
 * [x] Serve static folders
 * [x] Make a better playground for testing endpoints
+  * [ ] better preview of variadic routes
+* [ ] improve docs
+  * [ ] document variadic routes
+  * [ ] document autofilled parameters
+  * [ ] document decorators
+  * [ ] document error modes
+  * [ ] document static file serving
+  * [ ] document favicon
+  * [ ] document fallback handler
+  * [ ] document regexp / match routes
 * [ ] Make a client-side python proxy object to make API requests from python
 * [ ] Test on ESP32 and other microcontrollers
 * [ ] Ideas? Let me know!

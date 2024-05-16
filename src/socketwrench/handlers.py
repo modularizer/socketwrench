@@ -6,6 +6,7 @@ import traceback
 from contextlib import suppress
 from functools import wraps
 from pathlib import Path
+import socket
 
 from socketwrench.tags import tag, get, gettag
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
@@ -17,6 +18,9 @@ logger = logging.getLogger("socketwrench")
 class Autofill:
     def request(self, request: Request) -> Request:
         return request
+
+    def socket(self, request: Request) -> socket.socket:
+        return request.connection_socket
 
     def query(self, request: Request) -> Query:
         return Query(request.path.query_args())
@@ -63,6 +67,7 @@ available_types = {
     "method": Method,
     "file": File,
     "client_addr": ClientAddr,
+    "socket": socket.socket,
 }
 
 def tryissubclass(a, others):
@@ -214,11 +219,13 @@ def preprocess_args(_handler):
     get_autofill_kwargs = autofill.autofill(special_params)
 
     def parser(request: Request, route_params: dict = None) -> tuple[tuple, dict, type]:
+        print("parsing args", sig.parameters, route_params)
         route_params = cast_to_types(route_params, sig.parameters) if route_params else {}
         if not sig.parameters:
             return (), {}, sig.return_annotation
         args = []
         kwargs = get_autofill_kwargs(request)
+        print("original kwargs", kwargs)
         q = request.path.query_args()
         if q:
             int_keys = sorted([int(k) for k in q if k.isdigit()])
@@ -256,6 +263,7 @@ def preprocess_args(_handler):
             args = tuple(kwargs.pop("args"))
         else:
             args = tuple(args)
+        print(f"args={args}, kwargs={kwargs}")
         return args, kwargs, sig.return_annotation
 
     tag(parser, autofill=special_params, sig=sig)

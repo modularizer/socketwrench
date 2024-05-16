@@ -138,8 +138,9 @@ class Sample:
         return f"a_c1: b={b}, d={d}"
 
     @route("/a/{b}/c/{d}")
-    def a_c(self, b, d):
-        return f"a_c: b={b}, d={d}"
+    def a_c(self, b, d, socket=None):
+        s = f"a_c: b={b}, d={d}, socket={str(socket)}".replace("<", "&lt").replace(">", "&gt")
+        return s
 
     @route("/a/{b}_is2/c/{d}_is2")
     def a_c2(self, b, d):

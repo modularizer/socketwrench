@@ -1,6 +1,7 @@
 import dataclasses
 import datetime
 import json
+import socket
 from pathlib import Path
 
 
@@ -113,13 +114,13 @@ class ClientAddr(str):
 
 class Request:
     @classmethod
-    def from_components(cls, pre_body_bytes: bytes, body: bytes, client_addr: str | tuple[str, int]) -> "Request":
+    def from_components(cls, pre_body_bytes: bytes, body: bytes, client_addr: str | tuple[str, int], connection_socket: socket.socket = None) -> "Request":
         """Create a Request object from a header string and a body bytes object."""
         i = pre_body_bytes.index(b"\r\n")
         first_line = pre_body_bytes[:i].decode()
         method, path, version = first_line.split(" ")
         header_bytes = pre_body_bytes[i + 2:]
-        return cls(method, path, version, header_bytes, body, client_addr)
+        return cls(method, path, version, header_bytes, body, client_addr, connection_socket)
 
     def __init__(self,
                  method: str | HTTPMethod = HTTPMethod.GET,
@@ -128,6 +129,7 @@ class Request:
                  header: bytes | HeaderBytes | Headers | dict[str, str] = HeaderBytes.EMPTY,
                  body: bytes | RequestBody = RequestBody.EMPTY,
                  client_addr: str | tuple[str, int] | None = None,
+                 connection_socket: socket.socket | None = None
                  ):
         self.method = HTTPMethod(method)
         self.path = RequestPath(path)
@@ -136,6 +138,7 @@ class Request:
         self._headers = None
         self.body = RequestBody(body)
         self.client_addr = ClientAddr(client_addr) if client_addr else None
+        self.connection_socket = connection_socket
 
     @property
     def headers(self) -> Headers:

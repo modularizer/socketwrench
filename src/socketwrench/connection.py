@@ -60,8 +60,7 @@ class Connection:
         else:
             body = b''
 
-        r = Request.from_components(pre_body_bytes, body, self.client_addr)
-        logger.info(f"{r}")
+        r = Request.from_components(pre_body_bytes, body, self.client_addr, self.socket)
         return r
 
     def send_response(self, connection_socket: socket.socket, response: Response):
