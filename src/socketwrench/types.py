@@ -304,7 +304,9 @@ class Response(metaclass=ResponseType):
         # Create an instance of the appropriate subclass based on the body type
         if isinstance(body, (bytes, memoryview)):
             return super(Response, cls).__new__(cls)
-        elif isinstance(body, str) and not issubclass(cls, HTMLResponse):
+        elif isinstance(body, str) and issubclass(cls, RedirectResponse):
+            return super(Response, RedirectResponse).__new__(RedirectResponse)
+        elif isinstance(body, str) and issubclass(cls, HTMLResponse):
             return super(Response, HTMLResponse).__new__(HTMLResponse)
         elif isinstance(body, Path) and not issubclass(cls, FileResponse):
             return super(Response, FileResponse).__new__(FileResponse)
@@ -545,7 +547,9 @@ class HTMLResponse(Response):
             headers = {}
         if "Content-Type" not in headers:
             headers["Content-Type"] = "text/html"
-        super().__init__(html.encode(), status_code, headers, version)
+        print("in init-a ", self, type(self))
+        Response.__init__(self, html.encode(), status_code, headers, version)
+        print("here")
 
 
 class JSONResponse(Response):
