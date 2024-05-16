@@ -65,50 +65,79 @@ available_types = {
     "client_addr": ClientAddr,
 }
 
+def tryissubclass(a, others):
+    try:
+        if isinstance(others, type):
+            return issubclass(a, others)
+    except:
+        pass
+    for o in others:
+        try:
+            if issubclass(a, o):
+                return True
+        except:
+            pass
+    return False
+
+def _typehint_matches(typehint, others):
+    return typehint in others or tryissubclass(typehint, others) or (hasattr(typehint, "__origin__") and typehint.__origin__ in others) or (hasattr(typehint, "__args__") and any(_typehint_matches(t, others) for t in typehint.__args__))
+
 
 def cast_to_typehint(value: str, typehint = inspect._empty):
 
     # unless specifically typed as a string, cast any numeric value to int or float
-    if typehint is not str:
-        # limited we can do here, but in general if a string is numeric it is far more likely it
-        # should be an int or float than a string
-        if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
-            if typehint is float:
-                return float(value)
+    if _typehint_matches(typehint, [int, inspect._empty]):
+        if value.isdigit() or (value.startswith("-") and value[1:].isdigit())  and not '.' in value:
             return int(value)
-        # if it's a float, it will have a decimal point
-        if "." in value:
-            v = value.replace(".", "")
-            if v.isdigit() or (v.startswith("-") and v[1:].isdigit()):
-                return float(value)
-    if typehint in [str, inspect._empty]:
-        return value
-    if typehint in [int, float]:
-        return typehint(value)
-    if typehint is bool:
-        return value.lower() in ("true", "t", "1")
-    if typehint is list:
-        try:
-            return json.loads(value)
-        except:
-            if value.startswith("[") and value.endswith("]"):
-                value = value[1:-1]
-            elif value.startswith("(") and value.endswith(")"):
-                value = value[1:-1]
-            elif value.startswith("{") and value.endswith("}"):
-                value = value[1:-1]
-            values = value.split(",")
-            values = [v.strip().strip('"') for v in values]
-            return [cast_to_typehint(v) for v in values]
-    if typehint in [tuple, set, frozenset]:
-        return typehint(cast_to_typehint(value, list))
-    if typehint is dict:
-        return json.loads(value)
-    if typehint is bytes:
+    if _typehint_matches(typehint, [float, inspect._empty]):
+        if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
+            return float(value)
+    if _typehint_matches(typehint, [bool, inspect._empty]):
+        if value.lower() in ["false", "f", "no", "n"]:
+            return False
+        if value.lower() in ["true", "t", "yes", "y"]:
+            return True
+    if _typehint_matches(typehint, [bool]):
+        if value.lower() in ["0"]:
+            return False
+        if value.lower() in ["1", "ok"]:
+            return True
+    if _typehint_matches(typehint, [list, inspect._empty]):
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                return json.loads(value)
+            except:
+                pass
+    if _typehint_matches(typehint, [tuple, inspect._empty]):
+        if value.startswith("(") and value.endswith(")"):
+            try:
+                s = '[' + value[1:-1] + ']'
+                return tuple(json.loads(s))
+            except:
+                pass
+    if _typehint_matches(typehint, [dict, inspect._empty]):
+        if value.startswith("{") and value.endswith("}"):
+            try:
+                return json.loads(value)
+            except:
+                pass
+    if _typehint_matches(typehint, [frozenset]):
+        if value.startswith("{") and value.endswith("}"):
+            try:
+                return frozenset(json.loads('[' + value[1:-1] + ']'))
+            except:
+                pass
+    if _typehint_matches(typehint, [set, inspect._empty]):
+        if value.startswith("{") and value.endswith("}"):
+            try:
+                return set(json.loads('[' + value[1:-1] + ']'))
+            except:
+                pass
+    if typehint is bytes or tryissubclass(typehint, bytes):
         return value.encode()
-    if typehint is bytearray:
+    if typehint is bytearray or tryissubclass(typehint, bytearray):
         return bytearray(value.encode())
-    if typehint is memoryview:
+    if typehint is memoryview or tryissubclass(typehint, memoryview):
         return memoryview(value.encode())
     if typehint is type:
         if hasattr(builtins, value):
@@ -118,12 +147,6 @@ def cast_to_typehint(value: str, typehint = inspect._empty):
         if typehint.__origin__ in [list, tuple, set, frozenset]:
             return typehint([cast_to_typehint(v, typehint.__args__[0]) for v in value])
         return cast_to_typehint(value, typehint.__origin__)
-    if hasattr(typehint, "__args__"):
-        for t in typehint.__args__:
-            try:
-                return cast_to_typehint(value, t)
-            except:
-                pass
     return value
 
 
@@ -545,3 +568,8 @@ class RouteHandler:
 
     def __getattr__(self, item):
         return self.__class__(self.fallback_handler, self.routes, self.base_path + item + "/")
+
+
+if __name__ == "__main__":
+    items = ["23", "3.14", "True", "False", "1", "0", "[1, 2, 3]", "(1, 2, 3)", "{1, 2, 3}", "{1: 2, 3: 4}", "hello", "world"]
+    d = {v: (cast_to_typehint(v), type(cast_to_typehint(v))) for v in items}
