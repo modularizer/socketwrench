@@ -3,6 +3,7 @@ from pathlib import Path
 
 from socketwrench.handlers import StaticFileHandler
 from socketwrench.tags import private, post, put, patch, delete, route, methods
+from socketwrench.types import TBDBResponse
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -149,6 +150,13 @@ class Sample:
     @route("/a/{b}_is2/c/{d}_is{e}")
     def a_c3(self, b, d, e):
         return f"a_c3: b={b}, d={d}, e={e}"
+
+    def tbdb_test(self):
+        return TBDBResponse([
+            {"x": 6, "y": 7, "z": 8},
+            {"x": 22, "y": 33, "z": 44},
+            {"x": 55, "y": 66, "z": 77},
+        ])
 
 
 if __name__ == '__main__':

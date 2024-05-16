@@ -59,6 +59,7 @@ available_types = {
     "method": Method, # request method str (GET, POST, etc.)
     "file": File, # file bytes (essentially the same as body)
     "client_addr": ClientAddr, # client ip address string (also contains host and port attributes)
+    "socket": socket.socket, # the socket object for the client
 }
 ```
 

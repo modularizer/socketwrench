@@ -550,6 +550,54 @@ class HTMLResponse(Response):
         Response.__init__(self, html.encode(), status_code, headers, version)
 
 
+class StandardHTMLResponse(HTMLResponse):
+    def __init__(self, body: str, title = "", favicon=None,  scripts: list = None, stylesheets = None, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1"):
+        favicon = f'<link rel="icon" href="{favicon}">' if favicon else ""
+        scripts = "\n".join([f'<script src="{i}"></script>' for i in scripts]) if scripts else ""
+        stylesheets = "\n".join([f'<link rel="stylesheet" href="{i}">' for i in stylesheets]) if stylesheets else ""
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>{title}</title>
+    {favicon}
+    {scripts}
+    {stylesheets}
+</head>
+<body>
+    {body}
+</body>
+</html>"""
+        super().__init__(html, status_code, headers, version)
+
+
+class HTMLTextResponse(StandardHTMLResponse): # this is easier to implement than escaping the text
+    def __init__(self, body: str, title="", favicon=None,  scripts: list = None, stylesheets = None, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1"):
+        super().__init__(f"<pre>{body}</pre>",
+                            title=title,
+                            favicon=favicon,
+                            scripts=scripts,
+                            stylesheets=stylesheets,
+                            status_code=status_code,
+                            headers=headers,
+                            version=version)
+
+
+class TBDBResponse(StandardHTMLResponse):
+    """Displays tabular json data in a table using https://github.com/modularizer/teebydeeby"""
+    def __init__(self, data, title="", favicon=None,  scripts: list = None, stylesheets = None, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1"):
+        if not isinstance(data, str):
+            data = json.dumps(data, indent=4)
+        super().__init__(f"<teeby-deeby>{data}</teeby-deeby>",
+                            title=title,
+                            favicon=favicon,
+                            scripts=["https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js", "https://modularizer.github.io/teebydeeby/tbdb.js"] + list(scripts or []),
+                            stylesheets=stylesheets,
+                            status_code=status_code,
+                            headers=headers,
+                            version=version)
+
+
+
 class JSONResponse(Response):
     def __init__(self, data: str | dict | list | tuple | int | float, status_code: int = 200, headers: dict = None,
                  version: str = "HTTP/1.1"):
