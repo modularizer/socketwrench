@@ -17,7 +17,12 @@ class Server(socket.socket):
     default_backlog = 1
     default_chunk_size = Connection.default_chunk_size
     default_num_connection_threads = 1
-    default_socket_options = None
+    default_socket_options = {
+        socket.SOL_SOCKET: {
+            socket.SO_REUSEADDR: 1,
+            socket.SO_REUSEPORT: 1
+        }
+    }
     default_pause_sleep = 0.1
     default_accept_sleep = 0
     default_favicon = RouteHandler.default_favicon

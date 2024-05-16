@@ -39,7 +39,7 @@ class Headers(dict):
     def to_string(self) -> str:
         s = ""
         for k, v in self.items():
-            s += f"{k}: {v}\n"
+            s += f"{k}: {v}\r\n"
         return s
 
     def __str__(self):

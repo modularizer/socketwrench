@@ -8,6 +8,7 @@ logger = logging.getLogger("socketwrench")
 
 class Connection:
     default_chunk_size: int = 1024
+    timeout = 5
 
     def __init__(self,
                  handler,
@@ -24,16 +25,21 @@ class Connection:
         self._rep = None
 
     def handle(self):
-        request = self.receive_request(self.socket)
-        if self.check_cleanup():
-            return request, None, False
-        response = self.handler(request)
-        if self.check_cleanup():
-            return request, response, False
-        self.send_response(self.socket, response)
-        return request, response, True
+                try:
+            request = self.receive_request(self.socket)
+            if self.check_cleanup():
+                return request, None, False
+            response = self.handler(request)
+            if self.check_cleanup():
+                return request, response, False
+            self.send_response(self.socket, response)
+            return request, response, True
+        except Exception as e
+            self.close()
+            raise e
 
     def receive_request(self, connection_socket: socket.socket, chunk_size: int = None) -> Request:
+        connection_socket.settimeout(self.timeout)
         if chunk_size is None:
             chunk_size = self.chunk_size
 
@@ -64,7 +70,8 @@ class Connection:
         return r
 
     def send_response(self, connection_socket: socket.socket, response: Response):
-        connection_socket.send(bytes(response))
+        connection_socket.sendall(bytes(response))
+        connection_socket.shutdown(socket.SHUT_WR) # seems to be needed for linux?
         connection_socket.close()
 
     def check_cleanup(self):
@@ -74,6 +81,7 @@ class Connection:
         return False
 
     def close(self):
+        self.socket.shutdown(socket.SHUT_WR) # seems to be needed for linux?
         self.socket.close()
 
     def __repr__(self):
