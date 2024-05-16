@@ -541,6 +541,31 @@ class FileResponse(Response):
         return ""
 
 
+# define a class such that FileTypeResponse[content_type] is a subclass of FileResponse
+
+
+class FileTypeResponseMeta(type):
+    def __getitem__(self, content_type):
+        # Create a new subclass of FileResponse with a custom content type
+        if content_type[0] == "." and content_type[1:] in FileResponse.content_types:
+            content_type = FileResponse.content_types[content_type[1:]]
+
+        class TypedFileResponse(FileResponse):
+            default_content_type = content_type
+
+        # Generate a class name based on the content type
+        ct_name = content_type.split("/")[-1].replace(".", "").replace("-", "").upper()
+        TypedFileResponse.__name__ = f"{ct_name}FileResponse"
+
+        return TypedFileResponse
+
+    def __subclasscheck__(self, subclass):
+        return issubclass(subclass, FileResponse)
+
+class FileTypeResponse(metaclass=FileTypeResponseMeta):
+    pass
+
+
 class HTMLResponse(Response):
     def __init__(self, html: str, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1"):
         if headers is None:
