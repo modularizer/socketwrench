@@ -102,7 +102,7 @@ def cast_to_typehint(value: str, typehint = inspect._empty):
             return False
         if value.lower() in ["true", "t", "yes", "y"]:
             return True
-    if value.lower() in ["none", "null"] and _typehint_matches(typehint, [None]) or not _typehint_matches(typehint, [str]):
+    if value.lower() in ["none", "null"] and (_typehint_matches(typehint, [None]) or not _typehint_matches(typehint, [str])):
         return None
     if _typehint_matches(typehint, [bool]):
         if value.lower() in ["0"]:
