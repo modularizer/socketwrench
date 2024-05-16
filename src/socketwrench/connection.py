@@ -25,7 +25,7 @@ class Connection:
         self._rep = None
 
     def handle(self):
-                try:
+        try:
             request = self.receive_request(self.socket)
             if self.check_cleanup():
                 return request, None, False
@@ -34,7 +34,7 @@ class Connection:
                 return request, response, False
             self.send_response(self.socket, response)
             return request, response, True
-        except Exception as e
+        except Exception as e:
             self.close()
             raise e
 
