@@ -547,9 +547,7 @@ class HTMLResponse(Response):
             headers = {}
         if "Content-Type" not in headers:
             headers["Content-Type"] = "text/html"
-        print("in init-a ", self, type(self))
         Response.__init__(self, html.encode(), status_code, headers, version)
-        print("here")
 
 
 class JSONResponse(Response):
