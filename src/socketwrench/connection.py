@@ -64,7 +64,8 @@ class Connection:
         return r
 
     def send_response(self, connection_socket: socket.socket, response: Response):
-        connection_socket.send(bytes(response))
+        connection_socket.sendall(bytes(response))
+        connection_socket.shutdown(socket.SHUT_WR) # seems to be needed for linux?
         connection_socket.close()
 
     def check_cleanup(self):
@@ -74,6 +75,7 @@ class Connection:
         return False
 
     def close(self):
+        self.socket.shutdown(socket.SHUT_WR) # seems to be needed for linux?
         self.socket.close()
 
     def __repr__(self):
