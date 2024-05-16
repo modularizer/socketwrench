@@ -151,12 +151,12 @@ class Sample:
     def a_c3(self, b, d, e):
         return f"a_c3: b={b}, d={d}, e={e}"
 
-    def tbdb_test(self):
-        return TBDBResponse([
+    def tbdb_test(self) -> TBDBResponse:
+        return [
             {"x": 6, "y": 7, "z": 8},
             {"x": 22, "y": 33, "z": 44},
             {"x": 55, "y": 66, "z": 77},
-        ])
+        ]
 
 
 if __name__ == '__main__':

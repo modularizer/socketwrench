@@ -225,7 +225,6 @@ def preprocess_args(_handler):
             return (), {}, sig.return_annotation
         args = []
         kwargs = get_autofill_kwargs(request)
-        print("original kwargs", kwargs)
         q = request.path.query_args()
         if q:
             int_keys = sorted([int(k) for k in q if k.isdigit()])
@@ -263,7 +262,6 @@ def preprocess_args(_handler):
             args = tuple(kwargs.pop("args"))
         else:
             args = tuple(args)
-        print(f"args={args}, kwargs={kwargs}")
         return args, kwargs, sig.return_annotation
 
     tag(parser, autofill=special_params, sig=sig)
