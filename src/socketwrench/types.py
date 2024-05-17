@@ -86,6 +86,8 @@ class RequestPath(str):
     def route(self) -> str:
         """Extracts the path from the path and remove the query."""
         p = self.split("?", 1)[0]
+        if not p.endswith("/"):
+            p += "/"
         return p
 
     def query_args(self) -> dict[str, str]:
