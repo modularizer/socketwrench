@@ -60,6 +60,8 @@ class Server(socket.socket):
             fallback_handler (RequestHandler, optional): The function to use to handle requests that don't match any routes.
             serve (bool, optional): Whether to start serving immediately. Defaults to True.
         """
+        if isinstance(routes, type):
+            routes = routes()
 
         s = str(routes)
         s2 = s.split("\n")[0][:50]
