@@ -1010,3 +1010,4 @@ def set_default_error_mode(mode: str):
     if mode not in [ErrorModes.HIDE, ErrorModes.TYPE, ErrorModes.SHORT, ErrorModes.TRACEBACK]:
         raise ValueError(f"Invalid error mode: {mode}. Options are 'hide', 'type', 'short', 'traceback'.")
     ErrorModes.DEFAULT = mode
+

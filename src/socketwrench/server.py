@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from socketwrench.connection import Connection
-from socketwrench.handlers import RouteHandler, wrap_handler
+from socketwrench.handlers import RouteHandler, wrap_handler, is_object_instance
 
 logger = logging.getLogger("socketwrench")
 
@@ -19,8 +19,7 @@ class Server(socket.socket):
     default_num_connection_threads = 1
     default_socket_options = {
         socket.SOL_SOCKET: {
-            socket.SO_REUSEADDR: 1,
-            socket.SO_REUSEPORT: 1
+            socket.SO_REUSEADDR: 1
         }
     }
     default_pause_sleep = 0.1
@@ -39,7 +38,8 @@ class Server(socket.socket):
                  accept_sleep: float = default_accept_sleep,
                  fallback_handler=None,
                  serve: bool = True,
-                 favicon: str | Path = default_favicon
+                 favicon: str | Path = default_favicon,
+                 **kwargs
                  ):
         """A simple HTTP server built directly on top of socket.socket.
 
@@ -60,15 +60,13 @@ class Server(socket.socket):
             fallback_handler (RequestHandler, optional): The function to use to handle requests that don't match any routes.
             serve (bool, optional): Whether to start serving immediately. Defaults to True.
         """
-        if isinstance(routes, type):
-            routes = routes()
 
         s = str(routes)
         s2 = s.split("\n")[0][:50]
         s = s2 + ("..." if len(s) > len(s2) else "")
         logger.info(f"Creating server with {s}")
 
-        if callable(routes):
+        if callable(routes) and not is_object_instance(routes):
             if isinstance(routes, RouteHandler):
                 self.handler = routes
             else:
@@ -78,7 +76,8 @@ class Server(socket.socket):
                 fallback_handler=fallback_handler,
                 routes=routes,
                 base_path="/",
-                favicon=favicon
+                favicon=favicon,
+                **kwargs
             )
 
         self.host = host
@@ -126,14 +125,14 @@ class Server(socket.socket):
             for option, value in options.items():
                 self.setsockopt(level, option, value)
 
-    def serve(self, thread: bool = False, cleanup_event = None, pause_event = None, **kwargs) -> None | tuple:
+    def serve(self, thread: bool = False, cleanup_event = None, pause_event = None, nav_path="/", **kwargs) -> None | tuple:
         if not isinstance(self, Server):
             if isinstance(self, str) or "<module" in str(type(self)):
-                return Server.serve_module(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, **kwargs)
+                return Server.serve_module(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, nav_path=nav_path, **kwargs)
             elif isinstance(self, type):
-                return Server.serve_class(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, **kwargs)
+                return Server.serve_class(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, nav_path=nav_path,**kwargs)
             # allows classmethod-like usage of Server.serve(my_server_instance)
-            return Server(self).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
+            return Server(self, nav_path=nav_path, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
         if thread:
             import threading
 

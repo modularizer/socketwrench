@@ -10,7 +10,7 @@ import socket
 
 from socketwrench.tags import tag, get, gettag
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
-    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, HTMLResponse, url_decode
+    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, HTMLResponse, url_decode, StandardHTMLResponse
 
 logger = logging.getLogger("socketwrench")
 
@@ -373,6 +373,10 @@ class StaticFileHandler(MatchableHandlerABC):
 
 def matches_variadic_route(route: str, variadic_route: str) -> dict:
     try:
+        if route.endswith("/") and not variadic_route.endswith("/"):
+            route = route[:-1]
+        elif variadic_route.endswith("/") and not route.endswith("/"):
+            variadic_route = variadic_route[:-1]
         route_parts = route.split("/")
         variadic_parts = variadic_route.split("/")
         n = len(route_parts)
@@ -479,6 +483,20 @@ def sort_variadic_routes(patterns):
     sorted_patterns = [_v[-1] for _v in reversed(sorted(q))]
     return sorted_patterns
 
+
+def is_object_instance(obj):
+    # Check if obj is an instance of a custom class
+    if not hasattr(obj, '__class__'):
+        return False
+    # Get all members of the object's class
+    members = inspect.getmembers(obj.__class__, predicate=inspect.isfunction)
+
+    # Check if there are any user-defined methods (excluding special methods)
+    user_defined_methods = [name for name, f in members if not name.startswith('_')]
+
+    return bool(user_defined_methods)
+
+
 class RouteHandler:
     resources_folder = Path(__file__).parent / "resources"
     playground_folder = resources_folder / "playground"
@@ -490,8 +508,13 @@ class RouteHandler:
                  base_path: str = "/",
                  require_tag: bool = False,
                  error_mode: str = ErrorModes.HIDE,
-                 favicon: str | None = default_favicon
+                 favicon: str | None = default_favicon,
+                 nav_path = "/",
+                 nav_recursion = True,
                  ):
+        base_path = base_path.replace("//", "/")
+        if not base_path.endswith("/"):
+            base_path += "/"
         self.base_path = base_path
         self.require_tag = require_tag
         self.error_mode = error_mode
@@ -500,10 +523,34 @@ class RouteHandler:
         self.routes = {}
         self.matchable_routes = {}
         self.variadic_routes = {}
+        self.sub_route_handlers = {}
+        self.nav_path = nav_path
+        self.nav_recursion = nav_recursion
         if routes:
+            if isinstance(routes, type):
+                routes = routes()
+
+            kw = {
+                "error_mode": error_mode,
+                "require_tag": require_tag,
+                "nav_path": nav_path,
+                "nav_recursion": nav_recursion,
+            }
             if isinstance(routes, dict):
                 for k, v in routes.items():
-                    self[k] = v
+                    sub = self.base_path + (k[1:] if k.startswith("/") else k) + ("/" if not k.endswith("/") else "")
+                    sub = sub.replace("//", "/")
+
+                    if isinstance(v, type):
+                        self.sub_route_handlers[sub] = RouteHandler(v(), base_path=sub, **kw)
+                    elif isinstance(v, RouteHandler):
+                        self.sub_route_handlers[sub] = v
+                    elif isinstance(v, dict):
+                        self.sub_route_handlers[sub] = RouteHandler(v, base_path=sub, **kw)
+                    elif is_object_instance(v):
+                        self.sub_route_handlers[sub] = RouteHandler(v, base_path=sub, **kw)
+                    else:
+                        self[k] = v
             else:
                 self.parse_routes_from_object(routes)
         self.fallback_handler = wrap_handler(fallback_handler) if fallback_handler else None
@@ -524,13 +571,19 @@ class RouteHandler:
         if self.favicon_path:
             self.default_routes["/favicon.ico"] = wrap_handler(self.favicon, error_mode=error_mode)
 
-    @get
-    def openapi(self) -> str:
-        from socketwrench.openapi import openapi_schema
+    def _all_routes(self, recursive=True):
         d = {
             **self.routes,
             **self.variadic_routes
         }
+        if recursive:
+            for k, v in self.sub_route_handlers.items():
+                d.update(v._all_routes(recursive))
+        return d
+    @get
+    def openapi(self) -> str:
+        from socketwrench.openapi import openapi_schema
+        d = self._all_routes()
         o = openapi_schema(d)
         return o
 
@@ -571,10 +624,45 @@ class RouteHandler:
                     for route in routes:
                         with suppress(Exception):
                             self[route] = v
+        if callable(obj):
+            self[""] = obj
+
+    def get_nav(self):
+        routes = self._all_routes(self.nav_recursion)
+        links = []
+        for route in routes:
+            if route.startswith(self.base_path):
+                r = route[len(self.base_path):]
+                if not r.endswith("/"):
+                    r += "/"
+                n = r.count("/")
+                links.append(self.base_path + r)
+        links = sorted(links)
+        nav = "<ul>\n" + "\n\t".join([f'<li><a href="{l}">{l}</a></li>' if '{' not in l else f'<li>{l}</li>'  for l in links]) + "\n</ul>"
+        return StandardHTMLResponse(nav, title=self.base_path)
 
     def __call__(self, request: Request) -> Response:
         route = request.path.route()
+
+        route_diff = route[len(self.base_path):]
+        if not route_diff.startswith("/"):
+            route_diff = "/" + route_diff
+        if self.nav_path and (route_diff == self.nav_path or route_diff == self.nav_path + "/"):
+            return self.get_nav()
+
+        if not route.startswith(self.base_path):
+            return Response(b'Not Found',
+                            status_code=404,
+                            headers={"Content-Type": "text/plain"},
+                            version=request.version)
+        # search from longest to shortest subroute by length or string
+        subroute_keys = sorted(self.sub_route_handlers.keys(), key=lambda x: (len(x), x), reverse=True)
+        for k in subroute_keys:
+            if route.startswith(k):
+                return self.sub_route_handlers[k](request)
+
         handler = self.routes.get(route, None)
+
         route_params = {}
         if handler is None:
             for k, v in self.matchable_routes.items():
@@ -623,6 +711,7 @@ class RouteHandler:
         return r
 
     def route(self, handler, route: str | None = None, allowed_methods: tuple[str] | None = None):
+        route = route.replace("//", "/")
         if isinstance(handler, Path):
             handler = StaticFileHandler(Path, route)
 
@@ -638,12 +727,15 @@ class RouteHandler:
         h.__dict__["allowed_methods"] = allowed_methods
         if self.base_path == "/" and route.startswith("/"):
             route = route[1:]
+
+        sub = self.base_path + route + ("/" if not route.endswith("/") else "")
+        sub = sub.replace("//", "/")
         if "{" in route and "}" in route:
-            self.variadic_routes[self.base_path + route] = h
+            self.variadic_routes[sub] = h
         elif hasattr(h, "match") and callable(h.match):
-            self.matchable_routes[self.base_path + route] = h
+            self.matchable_routes[sub] = h
         else:
-            self.routes[self.base_path + route] = h
+            self.routes[sub] = h
 
     def get(self, handler=None, route: str | None = None):
         return self.route(handler, route, allowed_methods=("GET",))

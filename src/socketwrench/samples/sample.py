@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 
 from socketwrench.handlers import StaticFileHandler
-from socketwrench.tags import private, post, put, patch, delete, route, methods
+from socketwrench.tags import private, post, put, patch, delete, route, methods, get
 from socketwrench.types import TBDBResponse, FileTypeResponse
 
 logging.basicConfig(level=logging.DEBUG)
@@ -167,10 +167,41 @@ class Sample:
         return x
 
 
+
+
+class Other:
+    def hello(self):
+        return "world"
+
+    def goodbye(self):
+        return "cruel world"
+
+
+class Another:
+    @get("/add/{x}/{y}")
+    def add(self, x, y):
+        return x + y
+
+    @get("/sub/{x}/{y}")
+    def sub(self, x, y):
+        return x - y
+
+    def hello(self):
+        return "world"
+
+
+
 if __name__ == '__main__':
     from socketwrench import serve
     s = Sample()
-    serve(s)
+    serve({
+        "sample": s,
+        "a": Another(),
+        "nest": {
+            "a": Another,
+            "o": Other
+        }
+    }, nav_path="/nav")
     # OR
     # serve(Sample)
     # OR
