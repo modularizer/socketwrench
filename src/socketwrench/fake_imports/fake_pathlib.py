@@ -47,7 +47,6 @@ class Path:
         return self.path.split(self.slash)[-1].split(".")[1]
 
     def exists(self):
-        print(f"checking if {self.path} exists")
         try:
             with open(self.path) as f:
                 return True

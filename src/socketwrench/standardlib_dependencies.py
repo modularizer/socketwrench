@@ -1,7 +1,11 @@
 """Imports all standard library dependencies to document what is used and allow for an easy spot to patch."""
-import socket
+from socketwrench.settings import raise_import_error_if_testing, config
 
-from socketwrench.settings import raise_import_error_if_testing
+sm = config.get("socket_module", None)
+if sm:
+    socket = sm
+else:
+    import socket
 
 try:
     raise_import_error_if_testing('any')

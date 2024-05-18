@@ -1,6 +1,7 @@
 
 config = {
     "spoof_modules": "all",
+    "socket_module": None
 }
 
 def raise_import_error_if_testing(module_name):
