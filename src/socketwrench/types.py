@@ -1,8 +1,4 @@
-import dataclasses
-import datetime
-import json
-import socket
-from pathlib import Path
+from socketwrench.builtin_imports import socket, Path, dataclasses, dumps
 
 
 class HTTPVersion(str):
@@ -52,7 +48,8 @@ class Headers(dict):
 class HeaderBytes(bytes):
     EMPTY = b""
 
-    def __new__(cls, s: bytes | Headers | dict[str, str]):
+    def __new__(cls, s):
+    # def __new__(cls, s: bytes | Headers | dict[str, str]):
         if isinstance(s, Headers):
             s = s.to_bytes()
         elif isinstance(s, dict):
@@ -86,8 +83,6 @@ class RequestPath(str):
     def route(self) -> str:
         """Extracts the path from the path and remove the query."""
         p = self.split("?", 1)[0]
-        if not p.endswith("/"):
-            p += "/"
         return p
 
     def query_args(self) -> dict[str, str]:
@@ -101,7 +96,8 @@ class RequestPath(str):
 
 
 class ClientAddr(str):
-    def __new__(cls, host_port: str | tuple[str, int]):
+    def __new__(cls, host_port):
+    # def __new__(cls, host_port: str | tuple[str, int]):
         if isinstance(host_port, tuple):
             host = host_port[0]
             port = host_port[1]
@@ -116,7 +112,8 @@ class ClientAddr(str):
 
 class Request:
     @classmethod
-    def from_components(cls, pre_body_bytes: bytes, body: bytes, client_addr: str | tuple[str, int], connection_socket: socket.socket = None) -> "Request":
+    def from_components(cls, pre_body_bytes: bytes, body: bytes, client_addr: str, connection_socket: socket = None) -> "Request":
+    # def from_components(cls, pre_body_bytes: bytes, body: bytes, client_addr: str | tuple[str, int], connection_socket: socket.socket = None) -> "Request":
         """Create a Request object from a header string and a body bytes object."""
         i = pre_body_bytes.index(b"\r\n")
         first_line = pre_body_bytes[:i].decode()
@@ -125,13 +122,13 @@ class Request:
         return cls(method, path, version, header_bytes, body, client_addr, connection_socket)
 
     def __init__(self,
-                 method: str | HTTPMethod = HTTPMethod.GET,
-                 path: str | RequestPath = RequestPath.BASE,
-                 version: str | HTTPVersion = HTTPVersion.HTTP_1_1,
-                 header: bytes | HeaderBytes | Headers | dict[str, str] = HeaderBytes.EMPTY,
-                 body: bytes | RequestBody = RequestBody.EMPTY,
-                 client_addr: str | tuple[str, int] | None = None,
-                 connection_socket: socket.socket | None = None
+                 method: str = HTTPMethod.GET,
+                 path: str = RequestPath.BASE,
+                 version: str = HTTPVersion.HTTP_1_1,
+                 header: bytes = HeaderBytes.EMPTY,
+                 body: bytes = RequestBody.EMPTY,
+                 client_addr: str = None,
+                 connection_socket: socket = None
                  ):
         self.method = HTTPMethod(method)
         self.path = RequestPath(path)
@@ -152,7 +149,7 @@ class Request:
         return f'{self.method} {self.path} {self.version}\r\n{self.headers}\r\n\r\n{self.body}'
 
     def to_json(self) -> str:
-        return json.dumps({
+        return dumps({
             "method": self.method,
             "path": self.path,
             "version": self.version,
@@ -242,7 +239,7 @@ class HTTPStatusCode(int):
     NOT_EXTENDED = 510
     NETWORK_AUTHENTICATION_REQUIRED = 511
 
-    def __new__(cls, status_code: int, phrase: str | None = None):
+    def __new__(cls, status_code: int, phrase: str = None):
         self = super().__new__(cls, status_code)
         self._phrase = phrase
         return self
@@ -296,10 +293,10 @@ class ResponseType(type):
 class Response(metaclass=ResponseType):
     default_content_type = None
 
-    def __new__(cls, body: bytes | ResponseBody = ResponseBody.EMPTY,
-                status_code: int | HTTPStatusCode = HTTPStatusCode.OK,
-                headers: bytes | HeaderBytes | Headers | dict = HeaderBytes.EMPTY,
-                version: str | HTTPVersion = HTTPVersion.HTTP_1_1,
+    def __new__(cls, body: bytes = ResponseBody.EMPTY,
+                status_code: int = HTTPStatusCode.OK,
+                headers: dict = HeaderBytes.EMPTY,
+                version: str = HTTPVersion.HTTP_1_1,
                 **headers_kwargs):
         # If the body is already a Response instance, return it
         if isinstance(body, Response):
@@ -321,10 +318,10 @@ class Response(metaclass=ResponseType):
             return super(Response, cls).__new__(cls)
 
     def __init__(self,
-                 body: bytes | ResponseBody = ResponseBody.EMPTY,
-                 status_code: int | HTTPStatusCode = HTTPStatusCode.OK,
-                 headers: bytes | HeaderBytes | Headers | dict = HeaderBytes.EMPTY,
-                 version: str | HTTPVersion = HTTPVersion.HTTP_1_1,
+                 body: bytes = ResponseBody.EMPTY,
+                 status_code: int = HTTPStatusCode.OK,
+                 headers: dict = HeaderBytes.EMPTY,
+                 version: str = HTTPVersion.HTTP_1_1,
                  **headers_kwargs
                  ):
         self.status_code = HTTPStatusCode(status_code)
@@ -334,7 +331,7 @@ class Response(metaclass=ResponseType):
         for k, v in headers_kwargs.items():
             t = k.replace("_", " ").title().replace(" ", "-")
             if not isinstance(v, str):
-                v = json.dumps(v)
+                v = dumps(v)
             self.headers[t] = v
         self.body = ResponseBody(body)
 
@@ -432,12 +429,12 @@ class FileResponse(Response):
     def __init__(self,
                  *a,
                  body: bytes = b"",
-                 path: str | Path = None,
-                 filename: str | None = None,
-                 extension: str | None = None,
+                 path: str = None,
+                 filename: str = None,
+                 extension: str = None,
                  status_code: int = 200,
                  headers: dict = None,
-                 content_type: str | None = None,
+                 content_type: str = None,
                  download: bool = False,
                  version: str = "HTTP/1.1"):
         if content_type is None and self.default_content_type is not None:
@@ -487,7 +484,7 @@ class FileResponse(Response):
             elif hasattr(a[0], "dumps"):
                 body = (a[0]).dumps().encode()
             elif isinstance(a[0], dict):
-                body = json.dumps(a[0]).encode()
+                body = dumps(a[0]).encode()
             else:
                 raise ValueError(f"Invalid argument: {a[0]}")
 
@@ -501,7 +498,12 @@ class FileResponse(Response):
         if "Content-Length" not in headers:
             headers["Content-Length"] = str(path.stat().st_size) if path else str(len(body))
         if "Last-Modified" not in headers:
-            headers["Last-Modified"] = datetime.datetime.fromtimestamp(path.stat().st_mtime).isoformat() if path else datetime.datetime.now().isoformat()
+            try:
+                import datetime
+                headers["Last-Modified"] = datetime.datetime.fromtimestamp(path.stat().st_mtime).isoformat() if path else datetime.datetime.now().isoformat()
+            except:
+                pass
+
 
         if path and path.is_dir():
             from tempfile import TemporaryFile
@@ -568,12 +570,12 @@ class FileTypeResponseMeta(type):
             def __init__(self,
                          *a,
                          body: bytes = b"",
-                         path: str | Path = None,
-                         filename: str | None = None,
-                         extension: str | None = None,
+                         path: str = None,
+                         filename: str = None,
+                         extension: str = None,
                          status_code: int = 200,
                          headers: dict = None,
-                         content_type: str | None = None,
+                         content_type: str = None,
                          download: bool = False,
                          version: str = "HTTP/1.1"):
                 if write_function:
@@ -651,7 +653,7 @@ class TBDBResponse(StandardHTMLResponse):
     """Displays tabular json data in a table using https://github.com/modularizer/teebydeeby"""
     def __init__(self, data, title="", favicon=None,  scripts: list = None, stylesheets = None, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1"):
         if not isinstance(data, str):
-            data = json.dumps(data, indent=4)
+            data = dumps(data, indent=4)
         super().__init__(f"<teeby-deeby>{data}</teeby-deeby>",
                             title=title,
                             favicon=favicon,
@@ -664,7 +666,7 @@ class TBDBResponse(StandardHTMLResponse):
 
 
 class JSONResponse(Response):
-    def __init__(self, data: str | dict | list | tuple | int | float, status_code: int = 200, headers: dict = None,
+    def __init__(self, data: dict, status_code: int = 200, headers: dict = None,
                  version: str = "HTTP/1.1"):
         if headers is None:
             headers = {}
@@ -673,7 +675,7 @@ class JSONResponse(Response):
         if not isinstance(data, str):
             if isinstance(data, tuple):
                 data = list(data)
-            if dataclasses.is_dataclass(data):
+            if dataclasses and dataclasses.is_dataclass(data):
                 data = dataclasses.asdict(data)
 
             if hasattr(data, "to_json"):
@@ -682,19 +684,19 @@ class JSONResponse(Response):
                 except:
                     if hasattr(data, "to_dict"):
                         try:
-                            data = json.dumps(data.to_dict())
+                            data = dumps(data.to_dict())
                         except:
                             data = str(data)
                     else:
                         data = str(data)
             elif hasattr(data, "to_dict"):
                 try:
-                    data = json.dumps(data.to_dict())
+                    data = dumps(data.to_dict())
                 except:
                     data = str(data)
             else:
                 try:
-                    data = json.dumps(data)
+                    data = dumps(data)
                 except:
                     data = str(data)
         super().__init__(data.encode(), status_code, headers, version)
@@ -702,7 +704,7 @@ class JSONResponse(Response):
 
 class ErrorResponse(Response):
     def __init__(self,
-                 error: str | bytes | Exception = b'Internal Server Error',
+                 error: Exception = b'Internal Server Error',
                  status_code: int = 500,
                  headers: dict = None,
                  version: str = "HTTP/1.1"):

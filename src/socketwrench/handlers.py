@@ -1,25 +1,14 @@
-import inspect
-import json
-import builtins
-import logging
-import traceback
-from contextlib import suppress
-from functools import wraps
-from pathlib import Path
-import socket
-
+from socketwrench.builtin_imports import loads, Path, socket, empty, signature, VAR_POSITIONAL, VAR_KEYWORD, getmembers, isfunction
 from socketwrench.tags import tag, get, gettag
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
-    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, HTMLResponse, url_decode, StandardHTMLResponse
-
-logger = logging.getLogger("socketwrench")
+    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, url_decode, StandardHTMLResponse
 
 
 class Autofill:
     def request(self, request: Request) -> Request:
         return request
 
-    def socket(self, request: Request) -> socket.socket:
+    def socket(self, request: Request):
         return request.connection_socket
 
     def query(self, request: Request) -> Query:
@@ -67,7 +56,7 @@ available_types = {
     "method": Method,
     "file": File,
     "client_addr": ClientAddr,
-    "socket": socket.socket,
+    "socket": socket,
 }
 
 def tryissubclass(a, others):
@@ -88,16 +77,17 @@ def _typehint_matches(typehint, others):
     return typehint in others or tryissubclass(typehint, others) or (hasattr(typehint, "__origin__") and typehint.__origin__ in others) or (hasattr(typehint, "__args__") and any(_typehint_matches(t, others) for t in typehint.__args__))
 
 
-def cast_to_typehint(value: str, typehint = inspect._empty):
-
+def cast_to_typehint(value: str, typehint = empty):
     # unless specifically typed as a string, cast any numeric value to int or float
-    if _typehint_matches(typehint, [int, inspect._empty]):
+    if _typehint_matches(typehint, [int, empty]):
         if value.isdigit() or (value.startswith("-") and value[1:].isdigit())  and not '.' in value:
             return int(value)
-    if _typehint_matches(typehint, [float, inspect._empty]):
-        if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
+    if _typehint_matches(typehint, [float, empty]):
+        try:
             return float(value)
-    if _typehint_matches(typehint, [bool, inspect._empty]):
+        except:
+            pass
+    if _typehint_matches(typehint, [bool, empty]):
         if value.lower() in ["false", "f", "no", "n"]:
             return False
         if value.lower() in ["true", "t", "yes", "y"]:
@@ -109,35 +99,35 @@ def cast_to_typehint(value: str, typehint = inspect._empty):
             return False
         if value.lower() in ["1", "ok"]:
             return True
-    if _typehint_matches(typehint, [list, inspect._empty]):
+    if _typehint_matches(typehint, [list, empty]):
         if value.startswith("[") and value.endswith("]"):
             try:
-                return json.loads(value)
+                return loads(value)
             except:
                 pass
-    if _typehint_matches(typehint, [tuple, inspect._empty]):
+    if _typehint_matches(typehint, [tuple, empty]):
         if value.startswith("(") and value.endswith(")"):
             try:
                 s = '[' + value[1:-1] + ']'
-                return tuple(json.loads(s))
+                return tuple(loads(s))
             except:
                 pass
-    if _typehint_matches(typehint, [dict, inspect._empty]):
+    if _typehint_matches(typehint, [dict, empty]):
         if value.startswith("{") and value.endswith("}"):
             try:
-                return json.loads(value)
+                return loads(value)
             except:
                 pass
     if _typehint_matches(typehint, [frozenset]):
         if value.startswith("{") and value.endswith("}"):
             try:
-                return frozenset(json.loads('[' + value[1:-1] + ']'))
+                return frozenset(loads('[' + value[1:-1] + ']'))
             except:
                 pass
-    if _typehint_matches(typehint, [set, inspect._empty]):
+    if _typehint_matches(typehint, [set, empty]):
         if value.startswith("{") and value.endswith("}"):
             try:
-                return set(json.loads('[' + value[1:-1] + ']'))
+                return set(loads('[' + value[1:-1] + ']'))
             except:
                 pass
     if typehint is bytes or tryissubclass(typehint, bytes):
@@ -147,9 +137,13 @@ def cast_to_typehint(value: str, typehint = inspect._empty):
     if typehint is memoryview or tryissubclass(typehint, memoryview):
         return memoryview(value.encode())
     if typehint is type:
-        if hasattr(builtins, value):
-            return getattr(builtins, value)
-        return globals().get(value, value)
+        try:
+            import builtins
+            if hasattr(builtins, value):
+                return getattr(builtins, value)
+            return globals().get(value, value)
+        except:
+            pass
     if hasattr(typehint, "__origin__"):
         if typehint.__origin__ in [list, tuple, set, frozenset]:
             return typehint([cast_to_typehint(v, typehint.__args__[0]) for v in value])
@@ -169,15 +163,14 @@ def cast_to_types(query, signature):
 
 
 def preprocess_args(_handler):
-    import inspect
-    sig = inspect.signature(_handler)
+    sig = signature(_handler)
 
     # make sure the handler doesn't use "args" unless as *args
-    if "args" in sig.parameters and sig.parameters["args"].kind != inspect.Parameter.VAR_POSITIONAL:
+    if "args" in sig.parameters and sig.parameters["args"].kind != VAR_POSITIONAL:
         raise ValueError("The handler cannot use 'args' as a parameter unless as *args.")
 
     # make sure the handler doesn't use "kwargs" unless as **kwargs
-    if "kwargs" in sig.parameters and sig.parameters["kwargs"].kind != inspect.Parameter.VAR_KEYWORD:
+    if "kwargs" in sig.parameters and sig.parameters["kwargs"].kind != VAR_KEYWORD:
         raise ValueError("The handler cannot use 'kwargs' as a parameter unless as **kwargs.")
 
     autofill = Autofill()
@@ -197,7 +190,7 @@ def preprocess_args(_handler):
             i = available_type_values.index(param.annotation)
             key = available_type_keys[i]
             special_params[key].append(name)
-        elif param.annotation is inspect._empty and param.name in available_types:
+        elif param.annotation is empty and param.name in available_types:
             special_params[param.name].append(name)
         elif param.name in available_types:
             a = param.annotation
@@ -210,9 +203,9 @@ def preprocess_args(_handler):
 
         if collector_found:
             pass
-        elif param.kind == inspect.Parameter.VAR_POSITIONAL:
+        elif param.kind == VAR_POSITIONAL:
             collector_found = True
-        elif param.kind == inspect.Parameter.VAR_KEYWORD:
+        elif param.kind == VAR_KEYWORD:
             collector_found = True
         else:
             args_before_collector += 1
@@ -247,7 +240,7 @@ def preprocess_args(_handler):
         b = request.body
         if b:
             try:
-                body = json.loads(b.decode())
+                body = loads(b.decode())
                 int_keys = sorted([int(k) for k in body if k.isdigit()])
                 if set(int_keys) != set(range(len(args), len(args) + len(int_keys))):
                     raise ValueError("Unable to parse args.")
@@ -278,8 +271,6 @@ def wrap_handler(_handler, error_mode: str = None):
 
     # make a stub function that takes the same parameters as the handler but doesn't do anything
     # use inspect.signature to get the parameters
-
-    @wraps(_handler)
     def wrapper(request: Request, route_params: dict = None) -> Response:
         try:
             if parser is None:
@@ -301,7 +292,6 @@ def wrap_handler(_handler, error_mode: str = None):
                     except:
                         response = Response(r, version=request.version)
         except Exception as e:
-            logger.exception(e)
             _error_mode = error_mode if error_mode is not None else ErrorModes.DEFAULT
             if _error_mode == ErrorModes.HIDE:
                 msg = b'Internal Server Error'
@@ -310,13 +300,21 @@ def wrap_handler(_handler, error_mode: str = None):
             elif _error_mode == ErrorModes.SHORT:
                 msg = str(e).encode()
             elif _error_mode == ErrorModes.LONG:
-                msg = traceback.format_exc().encode()
+                try:
+                    import traceback
+                    msg = traceback.format_exc().encode()
+                except:
+                    msg = str(e).encode()
             response = ErrorResponse(msg, version=request.version)
         return response
 
+
+    wrapper.__name__ = _handler.__name__
+    wrapper.__doc__ = _handler.__doc__
+
     tag(wrapper,
         is_wrapped=True,
-        sig=getattr(parser, "sig", inspect.signature(_handler)),
+        sig=getattr(parser, "sig", signature(_handler)),
         autofill=getattr(parser, "autofill", {}), **_handler.__dict__)
 
     if hasattr(_handler, "match"):
@@ -336,7 +334,7 @@ class StaticFileHandler(MatchableHandlerABC):
     is_wrapped = True
     allowed_methods = ["GET", "HEAD"]
 
-    def __init__(self, path: Path | str, route: str = None):
+    def __init__(self, path, route: str = None):
         self.path = path
         self.route = route or "/" + path.name
         self.allowed_methods = ["GET", "HEAD"]
@@ -347,7 +345,6 @@ class StaticFileHandler(MatchableHandlerABC):
         added = route[len(self.route):]
         p = (self.path / added.strip("/")) if added else self.path
         if not p.exists():
-            print("path doesn't exist", p, route, added)
             return False
         return True
 
@@ -367,7 +364,6 @@ class StaticFileHandler(MatchableHandlerABC):
             contents = "<!DOCTYPE html><html><body><ul>" + "\n".join([f"<li><a href='{route}/{f.name}'>{f.name}</a></li>" for f in folder_contents]) + "</ul></body></html>"
             return Response(contents.encode(), version=request.version)
         r = FileResponse(p, version=request.version)
-        print("content type", r.headers.get("Content-Type"))
         return r
 
 
@@ -451,11 +447,12 @@ def matches_variadic_route(route: str, variadic_route: str) -> dict:
                 elif nonvariadic_end < len(r):
                     return False
                 found_matches.update(variables)
+
+
         return found_matches
     except Exception as e:
-        print("Error", e)
-        print(str(traceback.format_exc()))
         return False
+
 
 def sort_variadic_routes(patterns):
     q = []
@@ -489,7 +486,7 @@ def is_object_instance(obj):
     if not hasattr(obj, '__class__'):
         return False
     # Get all members of the object's class
-    members = inspect.getmembers(obj.__class__, predicate=inspect.isfunction)
+    members = getmembers(obj.__class__, predicate=isfunction)
 
     # Check if there are any user-defined methods (excluding special methods)
     user_defined_methods = [name for name, f in members if not name.startswith('_')]
@@ -503,12 +500,12 @@ class RouteHandler:
     default_favicon = resources_folder / "favicon.ico"
 
     def __init__(self,
-                 routes: dict | None = None,
+                 routes: dict = None,
                  fallback_handler=None,
                  base_path: str = "/",
                  require_tag: bool = False,
                  error_mode: str = ErrorModes.HIDE,
-                 favicon: str | None = default_favicon,
+                 favicon: str = default_favicon,
                  nav_path = "/",
                  nav_recursion = True,
                  ):
@@ -538,17 +535,17 @@ class RouteHandler:
             }
             if isinstance(routes, dict):
                 for k, v in routes.items():
-                    sub = self.base_path + (k[1:] if k.startswith("/") else k) + ("/" if not k.endswith("/") else "")
+                    sub = self.base_path + (k[1:] if k.startswith("/") else k) + "/"
                     sub = sub.replace("//", "/")
 
                     if isinstance(v, type):
-                        self.sub_route_handlers[sub] = RouteHandler(v(), base_path=sub, **kw)
+                        self._add_subroute(sub, RouteHandler(v(), **kw))
                     elif isinstance(v, RouteHandler):
-                        self.sub_route_handlers[sub] = v
+                        self._add_subroute(sub, v)
                     elif isinstance(v, dict):
-                        self.sub_route_handlers[sub] = RouteHandler(v, base_path=sub, **kw)
+                        self._add_subroute(sub, RouteHandler(v, base_path=sub, **kw))
                     elif is_object_instance(v):
-                        self.sub_route_handlers[sub] = RouteHandler(v, base_path=sub, **kw)
+                        self._add_subroute(sub, RouteHandler(v, base_path=sub, **kw))
                     else:
                         self[k] = v
             else:
@@ -570,6 +567,11 @@ class RouteHandler:
         }
         if self.favicon_path:
             self.default_routes["/favicon.ico"] = wrap_handler(self.favicon, error_mode=error_mode)
+
+    def _add_subroute(self, sub, handler):
+        if sub in self.sub_route_handlers:
+            raise NotImplementedError(f"Route {sub} already exists. Duplicate routes are not allowed.")
+        self.sub_route_handlers[sub] = handler
 
     def _all_routes(self, recursive=True):
         d = {
@@ -622,33 +624,28 @@ class RouteHandler:
                         continue
                     routes = getattr(v, "routes", [k])
                     for route in routes:
-                        with suppress(Exception):
+                        try:
                             self[route] = v
+                        except:
+                            pass
         if callable(obj):
             self[""] = obj
 
-    def get_nav(self):
+    def get_nav(self, start=""):
         routes = self._all_routes(self.nav_recursion)
         links = []
         for route in routes:
-            if route.startswith(self.base_path):
-                r = route[len(self.base_path):]
-                if not r.endswith("/"):
-                    r += "/"
-                n = r.count("/")
-                links.append(self.base_path + r)
+            if route.startswith(start):
+                r = route[len(start):]
+                if r.startswith("/"):
+                    r = r[1:]
+                links.append((f"./{r}", route))
         links = sorted(links)
-        nav = "<ul>\n" + "\n\t".join([f'<li><a href="{l}">{l}</a></li>' if '{' not in l else f'<li>{l}</li>'  for l in links]) + "\n</ul>"
+        nav = "<ul>\n" + "\n\t".join([f'<li><a href="{rel}">{full}</a></li>' if '{' not in full else f'<li>{full}</li>' for rel, full in links]) + "\n</ul>"
         return StandardHTMLResponse(nav, title=self.base_path)
 
     def __call__(self, request: Request) -> Response:
         route = request.path.route()
-
-        route_diff = route[len(self.base_path):]
-        if not route_diff.startswith("/"):
-            route_diff = "/" + route_diff
-        if self.nav_path and (route_diff == self.nav_path or route_diff == self.nav_path + "/"):
-            return self.get_nav()
 
         if not route.startswith(self.base_path):
             return Response(b'Not Found',
@@ -672,9 +669,10 @@ class RouteHandler:
             else:
                 if route in self.default_routes:
                     handler = self.default_routes[route]
-                elif "{" in (x:= url_decode(route)) and x in self.variadic_routes:
-                    raise ValueError(f"Route {route} is variadic , {{}} patterns should be filled in")
                 else:
+                    x = url_decode(route)
+                    if "{" in x and x in self.variadic_routes:
+                        raise ValueError(f"Route {route} is variadic , {{}} patterns should be filled in")
                     # check all variadic routes in the correct order, first by number of parts, then number of variadic parts, then length of nonvariadic parts
                     variadic_patterns = sort_variadic_routes(list(self.variadic_routes.keys()))
 
@@ -683,9 +681,46 @@ class RouteHandler:
                         route_params = matches_variadic_route(route, k)
                         if route_params:
                             handler = self.variadic_routes[k]
-                            break
+                            for _k, _v in route_params.items():
+                                if hasattr(handler, "__dict__") and _k in handler.__dict__:
+                                    options = handler.__dict__[_k]
+                                    if _v == options:
+                                        # good! matches exactly
+                                        continue
+                                    elif isinstance(options, (list, tuple, set, frozenset)):
+                                        for o in options:
+                                            if str(o) == _v:
+                                                # good! matches exactly one of the options
+                                                break
+                                            try:
+                                                if isinstance(o, type):
+                                                    if isinstance(_v, o):
+                                                        # good! matches the type of one of the options
+                                                        break
+                                            except:
+                                                pass
+                                        else:
+                                            # oops! didn't match any of the options
+                                            break
+                                        continue
+                                    elif isinstance(options, type):
+                                        try:
+                                            options(_v)
+                                            continue
+                                        except:
+                                            # oops! didn't match the type
+                                            break
+                                    else:
+                                        # unable to interpret the options, maybe raise an error?
+                                        continue
+                            else:
+                                # this means the route_params matched all the options, which means we found the right handler
+                                break
                     else:
                         handler = self.fallback_handler
+
+        if handler is None and route.endswith(self.nav_path):
+            return self.get_nav(route[:-len(self.nav_path)])
 
         if handler is None:
             # send a response with 404
@@ -699,7 +734,6 @@ class RouteHandler:
         if request.method == "HEAD" and "GET" in allowed_methods:
             allowed_methods = list(allowed_methods) + ["HEAD"]
         if allowed_methods is None or request.method not in allowed_methods:
-            print("Method Not Allowed", route, request.method, allowed_methods, handler)
             return Response(b'Method Not Allowed',
                             status_code=405,
                             headers={"Content-Type": "text/plain"},
@@ -710,7 +744,8 @@ class RouteHandler:
             r = handler(request)
         return r
 
-    def route(self, handler, route: str | None = None, allowed_methods: tuple[str] | None = None):
+    # def route(self, handler, route: str | None = None, allowed_methods: tuple[str] | None = None):
+    def route(self, handler, route = None, allowed_methods = None):
         route = route.replace("//", "/")
         if isinstance(handler, Path):
             handler = StaticFileHandler(Path, route)
@@ -737,22 +772,22 @@ class RouteHandler:
         else:
             self.routes[sub] = h
 
-    def get(self, handler=None, route: str | None = None):
+    def get(self, handler=None, route: str = None):
         return self.route(handler, route, allowed_methods=("GET",))
 
-    def post(self, handler=None, route: str | None = None):
+    def post(self, handler=None, route: str = None):
         return self.route(handler, route, allowed_methods=("POST",))
 
-    def put(self, handler=None, route: str | None = None):
+    def put(self, handler=None, route: str = None):
         return self.route(handler, route, allowed_methods=("PUT",))
 
-    def patch(self, handler=None, route: str | None = None):
+    def patch(self, handler=None, route: str = None):
         return self.route(handler, route, allowed_methods=("PATCH",))
 
-    def delete(self, handler=None, route: str | None = None):
+    def delete(self, handler=None, route: str = None):
         return self.route(handler, route, allowed_methods=("DELETE",))
 
-    def head(self, handler=None, route: str | None = None):
+    def head(self, handler=None, route: str = None):
         route = route or handler.__name__
 
         def wrapper(request: Request) -> Response:

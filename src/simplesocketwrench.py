@@ -1,12 +1,18 @@
 import socket
-import logging
+
+try:
+    from logging import Logger
+except ImportError:
+    class Logger:
+        def info(self, *args):
+            print(*args)
 
 
 class Server:
-    def __init__(self, port: int = 8080, host: str = '', logger: logging.Logger | str | None = None):
+    def __init__(self, port: int = 8080, host: str = '', logger = None):
         self.host = host
         self.port = port
-        self._log = logger if isinstance(logger, logging.Logger) else logging.getLogger(logger if logger else self.__class__.__name__)
+        self._log = logger or Logger()
 
         self.server_socket = self.create_socket()
 
@@ -52,5 +58,4 @@ class Server:
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
     Server().serve()

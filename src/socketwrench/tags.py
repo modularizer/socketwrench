@@ -1,4 +1,8 @@
-from functools import partial
+def partial(func, *args, **keywords):
+    def wrapper(*args2, **keywords2):
+        keywords.update(keywords2)
+        return func(*(list(args) + list(args2)), **keywords)
+    return wrapper
 
 
 def tag(handler=None, **kwargs):
@@ -26,19 +30,19 @@ def private(handler):
 
 
 def allowed_methods(*methods: str):
-    def decorator(handler, route: str = None, error_mode: str = None, openapi: dict = None):
+    def decorator(handler, route: str = None, error_mode: str = None, openapi: dict = None, **kwargs):
         if isinstance(handler, str) and route is None:
-            return partial(get, route=handler, error_mode=error_mode, openapi=openapi)
+            return partial(get, route=handler, error_mode=error_mode, openapi=openapi, **kwargs)
         if route is not None:
             if "routes" not in handler.__dict__:
-                tag(handler, routes=[])
-            tag(handler, routes=list(set(handler.__dict__["routes"] + [route])))
+                tag(handler, routes=[], **kwargs)
+            tag(handler, routes=list(set(handler.__dict__["routes"] + [route])), **kwargs)
         if methods is not None:
             if "allowed_methods" not in handler.__dict__:
-                tag(handler, allowed_methods=[])
-            tag(handler, allowed_methods=list(set(handler.__dict__["allowed_methods"] + list(methods))))
+                tag(handler, allowed_methods=[], **kwargs)
+            tag(handler, allowed_methods=list(set(handler.__dict__["allowed_methods"] + list(methods))), **kwargs)
         if error_mode is not None:
-            tag(handler, error_mode=error_mode, openapi=openapi)
+            tag(handler, error_mode=error_mode, openapi=openapi, **kwargs)
         return handler
     return decorator
 

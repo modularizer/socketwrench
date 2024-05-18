@@ -178,6 +178,15 @@ class Other:
 
 
 class Another:
+
+    @get("/add_small/{x}/{y}", x=[1,2,3,4], y=float)
+    def add_small(self, x, y):
+        return f"small: {x + y}"
+
+    @get("/add/{x}/{y}", x=int, y=float)
+    def add_big(self, x, y):
+        return f"big: {x + y}"
+
     @get("/add/{x}/{y}")
     def add(self, x, y):
         return x + y
@@ -190,7 +199,6 @@ class Another:
         return "world"
 
 
-
 if __name__ == '__main__':
     from socketwrench import serve
     s = Sample()
@@ -201,7 +209,7 @@ if __name__ == '__main__':
             "a": Another,
             "o": Other
         }
-    }, nav_path="/nav")
+    })
     # OR
     # serve(Sample)
     # OR

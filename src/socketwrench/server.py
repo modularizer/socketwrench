@@ -1,16 +1,11 @@
 """A simple HTTP server built directly on top of socket.socket."""
-import socket
-import logging
-import time
-from pathlib import Path
-
+from socketwrench.builtin_imports import socket, sleep, Path, logger
 from socketwrench.connection import Connection
 from socketwrench.handlers import RouteHandler, wrap_handler, is_object_instance
 
-logger = logging.getLogger("socketwrench")
 
 
-class Server(socket.socket):
+class Server(socket):
     """A simple HTTP server built directly on top of socket.socket."""
     default_port = 8080
     default_host = ''
@@ -18,8 +13,11 @@ class Server(socket.socket):
     default_chunk_size = Connection.default_chunk_size
     default_num_connection_threads = 1
     default_socket_options = {
-        socket.SOL_SOCKET: {
-            socket.SO_REUSEADDR: 1
+        # socket.SOL_SOCKET: {
+        #     socket.SO_REUSEADDR: 1
+        # }
+        65535: {
+            4: 1
         }
     }
     default_pause_sleep = 0.1
@@ -27,18 +25,18 @@ class Server(socket.socket):
     default_favicon = RouteHandler.default_favicon
 
     def __init__(self,
-                 routes: dict | None = None,
+                 routes: dict = None,
                  port: int = default_port,
                  host: str = default_host,
                  backlog: int = default_backlog,
                  chunk_size: int = default_chunk_size,
                  num_connection_threads: int = default_num_connection_threads,
-                 socket_options: dict[int, dict[int, int]] | None = default_socket_options,
+                 socket_options: dict = "default",
                  pause_sleep: float = default_pause_sleep,
                  accept_sleep: float = default_accept_sleep,
                  fallback_handler=None,
                  serve: bool = True,
-                 favicon: str | Path = default_favicon,
+                 favicon: str = default_favicon,
                  **kwargs
                  ):
         """A simple HTTP server built directly on top of socket.socket.
@@ -60,6 +58,8 @@ class Server(socket.socket):
             fallback_handler (RequestHandler, optional): The function to use to handle requests that don't match any routes.
             serve (bool, optional): Whether to start serving immediately. Defaults to True.
         """
+        if socket_options == "default":
+            socket_options = self.default_socket_options
         if isinstance(routes, type):
             routes = routes()
 
@@ -102,7 +102,8 @@ class Server(socket.socket):
 
         self._rep = None
 
-        super().__init__(socket.AF_INET, socket.SOCK_STREAM)
+        # super().__init__(socket.AF_INET, socket.SOCK_STREAM)
+        super().__init__(2, 1)
         self.set_socket_options(socket_options or {})
 
         if serve:
@@ -127,7 +128,7 @@ class Server(socket.socket):
             for option, value in options.items():
                 self.setsockopt(level, option, value)
 
-    def serve(self, thread: bool = False, cleanup_event = None, pause_event = None, nav_path="/", **kwargs) -> None | tuple:
+    def serve(self, thread: bool = False, cleanup_event = None, pause_event = None, nav_path="/", **kwargs) -> tuple:
         if not isinstance(self, Server):
             if isinstance(self, str) or "<module" in str(type(self)):
                 return Server.serve_module(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, nav_path=nav_path, **kwargs)
@@ -156,9 +157,9 @@ class Server(socket.socket):
         while cleanup_event is None or (not cleanup_event.is_set()):
             if self.pause_sleep and pause_event is not None:
                 while pause_event.is_set() and (cleanup_event is None or (not cleanup_event.is_set())):
-                    time.sleep(self.pause_sleep)
+                    sleep(self.pause_sleep)
             if self.accept_sleep:
-                time.sleep(self.accept_sleep)
+                    sleep(self.accept_sleep)
             connection = self.accept_connection()
 
             # handle connection
@@ -186,21 +187,21 @@ class Server(socket.socket):
         if self._rep is None:
             r = f"<{self.__class__.__name__}("
             if self.port != self.default_port:
-                r += f"{self.port=}, "
+                r += f"port={self.port}, "
             if self.host != self.default_host:
-                r += f"{self.host=}, "
+                r += f"host={self.host}, "
             if self.backlog != self.default_backlog:
-                r += f"{self.backlog=}, "
+                r += f"backlog={self.backlog}, "
             if self.chunk_size != self.default_chunk_size:
-                r += f"{self.chunk_size=}, "
+                r += f"chunk_size={self.chunk_size}, "
             if self.num_connection_threads != self.default_num_connection_threads:
-                r += f"{self.num_connection_threads=}, "
+                r += f"num_connection_threads={self.num_connection_threads}, "
             if self.init_socket_options != self.default_socket_options:
-                r += f"{self.init_socket_options=}, "
+                r += f"init_socket_options={self.init_socket_options}, "
             if self.pause_sleep != self.default_pause_sleep:
-                r += f"{self.pause_sleep=}, "
+                r += f"pause_sleep={self.pause_sleep}, "
             if self.accept_sleep != self.default_accept_sleep:
-                r += f"{self.accept_sleep=}, "
+                r += f"accept_sleep={self.accept_sleep}, "
             r = r.rstrip(", ")
             r += ")>"
             self._rep = r
