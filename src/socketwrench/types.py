@@ -183,7 +183,7 @@ class Request:
 
     def __repr__(self):
         ca = f'"{self.client_addr}"' if isinstance(self.client_addr, str) else self.client_addr
-        r = f'<Request("{self.method}","{self.path}", "{self.version}", {bytes(self.header_bytes)}, {bytes(self.data)}, {ca}, {self.connection_socket}, "{self.origin}")>'
+        r = f'<Request("{self.method}","{self.path}", "{self.version}", {bytes(self.header_bytes)}, {bytes(self.body)}, {ca}, {self.connection_socket}, "{self.origin}")>'
         r = r.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
         if len(r) > 100:
             r = r[:100] + "..."
@@ -767,10 +767,7 @@ class JSONResponse(Response):
                 except:
                     data = str(data)
             else:
-                try:
-                    data = dumps(data)
-                except:
-                    data = str(data)
+                data = dumps(data)
         super().__init__(data.encode(), status_code, headers, version, raw=raw)
 
 

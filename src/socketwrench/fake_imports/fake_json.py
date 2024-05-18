@@ -19,6 +19,7 @@ def dumps(obj, indent=None):
             s = s.replace(", ", ",\n" + " " * indent)
     else:
         raise TypeError(f"Cannot serialize {type(obj)}")
+    print()
     return s
 
 

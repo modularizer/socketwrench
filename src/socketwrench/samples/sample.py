@@ -125,8 +125,8 @@ class Sample:
             "route": route,
             "full_path": full_path,
         }
-        for k, v in d.items():
-            print(k, v)
+        # for k, v in d.items():
+        #     print(k, v)
         return d
 
     @route("/a/{c}", error_mode="traceback")
@@ -211,7 +211,7 @@ if __name__ == '__main__':
             "a": Another,
             "o": Other
         }
-    }, spoof_modules="all")
+    })
     # OR
     # serve(Sample)
     # OR

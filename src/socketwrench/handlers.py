@@ -287,6 +287,7 @@ def wrap_handler(_handler, error_mode: str = None):
             else:
                 a, kw, return_annotation = parser(request, route_params=route_params)
                 r = _handler(*a, **kw)
+                print(f"{r=}, {type(r)}")
                 if isinstance(r, Response):
                     response = r
                 elif isinstance(r, HTTPStatusCode):
