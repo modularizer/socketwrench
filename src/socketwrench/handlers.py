@@ -576,6 +576,12 @@ class RouteHandler:
         if self.favicon_path:
             self.default_routes["/favicon.ico"] = wrap_handler(self.favicon, error_mode=error_mode)
 
+        default_route_keys = list(self.default_routes.keys())
+        for k in default_route_keys:
+            if k in self.routes:
+                del self.default_routes[k]
+
+
     def _add_subroute(self, sub, handler):
         if sub in self.sub_route_handlers:
             raise NotImplementedError(f"Route {sub} already exists. Duplicate routes are not allowed.")
@@ -607,7 +613,7 @@ class RouteHandler:
 
     @get
     def swagger(self) -> FileResponse:
-        return FileResponse(Path(__file__).parent / "resources" / "swagger.html")
+        return FileResponse(self.resources_folder / "swagger.html")
 
     @get
     def playground(self) -> Path:
@@ -719,73 +725,73 @@ class RouteHandler:
                             status_code=404,
                             headers={"Content-Type": "text/plain"},
                             version=request.version)
-        # search from longest to shortest subroute by length or string
-        subroute_keys = sorted(self.sub_route_handlers.keys(), key=lambda x: (len(x), x), reverse=True)
-        for k in subroute_keys:
-            if route.startswith(k):
-                return self.sub_route_handlers[k](request)
-
-        handler = self.routes.get(route, None)
 
         route_params = {}
-        if handler is None:
+        if route in self.default_routes:
+            handler = self.default_routes[route]
+        elif route in self.routes:
+            handler = self.routes[route]
+        else:
+            # search from longest to shortest subroute by length or string
+            subroute_keys = sorted(self.sub_route_handlers.keys(), key=lambda x: (len(x), x), reverse=True)
+            for k in subroute_keys:
+                if route.startswith(k):
+                    return self.sub_route_handlers[k](request)
+
             for k, v in self.matchable_routes.items():
                 if v.match(route):
                     handler = v
                     break
             else:
-                if route in self.default_routes:
-                    handler = self.default_routes[route]
-                else:
-                    x = url_decode(route)
-                    if "{" in x and x in self.variadic_routes:
-                        # raise ValueError(f"Route {route} is variadic, {{}} patterns should be filled in")
-                        return ErrorResponse(f"Route {x} is variadic, {{}} patterns should be filled in".encode(), version=request.version)
-                    # check all variadic routes in the correct order, first by number of parts, then number of variadic parts, then length of nonvariadic parts
-                    variadic_patterns = sort_variadic_routes(list(self.variadic_routes.keys()))
+                x = url_decode(route)
+                if "{" in x and x in self.variadic_routes:
+                    # raise ValueError(f"Route {route} is variadic, {{}} patterns should be filled in")
+                    return ErrorResponse(f"Route {x} is variadic, {{}} patterns should be filled in".encode(), version=request.version)
+                # check all variadic routes in the correct order, first by number of parts, then number of variadic parts, then length of nonvariadic parts
+                variadic_patterns = sort_variadic_routes(list(self.variadic_routes.keys()))
 
-                    for k in variadic_patterns:
-                        # these are in format /a/{b}/c/{d}/e, convert to regexp groups
-                        route_params = matches_variadic_route(route, k)
-                        if route_params:
-                            handler = self.variadic_routes[k]
-                            for _k, _v in route_params.items():
-                                if hasattr(handler, "__dict__") and _k in handler.__dict__:
-                                    options = handler.__dict__[_k]
-                                    if _v == options:
-                                        # good! matches exactly
-                                        continue
-                                    elif isinstance(options, (list, tuple, set, frozenset)):
-                                        for o in options:
-                                            if str(o) == _v:
-                                                # good! matches exactly one of the options
-                                                break
-                                            try:
-                                                if isinstance(o, type):
-                                                    if isinstance(_v, o):
-                                                        # good! matches the type of one of the options
-                                                        break
-                                            except:
-                                                pass
-                                        else:
-                                            # oops! didn't match any of the options
+                for k in variadic_patterns:
+                    # these are in format /a/{b}/c/{d}/e, convert to regexp groups
+                    route_params = matches_variadic_route(route, k)
+                    if route_params:
+                        handler = self.variadic_routes[k]
+                        for _k, _v in route_params.items():
+                            if hasattr(handler, "__dict__") and _k in handler.__dict__:
+                                options = handler.__dict__[_k]
+                                if _v == options:
+                                    # good! matches exactly
+                                    continue
+                                elif isinstance(options, (list, tuple, set, frozenset)):
+                                    for o in options:
+                                        if str(o) == _v:
+                                            # good! matches exactly one of the options
                                             break
-                                        continue
-                                    elif isinstance(options, type):
                                         try:
-                                            options(_v)
-                                            continue
+                                            if isinstance(o, type):
+                                                if isinstance(_v, o):
+                                                    # good! matches the type of one of the options
+                                                    break
                                         except:
-                                            # oops! didn't match the type
-                                            break
+                                            pass
                                     else:
-                                        # unable to interpret the options, maybe raise an error?
+                                        # oops! didn't match any of the options
+                                        break
+                                    continue
+                                elif isinstance(options, type):
+                                    try:
+                                        options(_v)
                                         continue
-                            else:
-                                # this means the route_params matched all the options, which means we found the right handler
-                                break
-                    else:
-                        handler = self.fallback_handler
+                                    except:
+                                        # oops! didn't match the type
+                                        break
+                                else:
+                                    # unable to interpret the options, maybe raise an error?
+                                    continue
+                        else:
+                            # this means the route_params matched all the options, which means we found the right handler
+                            break
+                else:
+                    handler = self.fallback_handler
 
         if handler is None and route.endswith(self.nav_path):
             return self.get_nav(route[:-len(self.nav_path)])

@@ -1,6 +1,6 @@
 class Path:
     def __init__(self, path):
-        self.path = path
+        self.path = str(path)
 
     def __str__(self):
         return self.path
@@ -15,29 +15,39 @@ class Path:
         return self.path
 
     def __truediv__(self, other):
-        return Path(self.path + "/" + other)
+        slash_count = self.path.count("/")
+        backslash_count = self.path.count("\\")
+        other_slash_count = other.count("/")
+        other_backslash_count = other.count("\\")
+        slash = '/' if (slash_count + other_slash_count) > (backslash_count + other_backslash_count) else '\\'
+        return Path(self.path + slash + other)
+
+    @property
+    def slash(self):
+        return "/" if self.path.count("/") > self.path.count("\\") else "\\"
 
     @property
     def parent(self):
-        return Path("/".join(self.path.split("/")[:-1]))
+        return Path("/".join(self.path.split(self.slash)[:-1]))
 
     @property
     def name(self):
-        return self.path.split("/")[-1]
+        return self.path.split(self.slash)[-1]
 
     @property
     def parts(self):
-        return self.path.split("/")
+        return self.path.split(self.slash)
 
     @property
     def stem(self):
-        return self.path.split("/")[-1].split(".")[0]
+        return self.path.split(self.slash)[-1].split(".")[0]
 
     @property
     def suffix(self):
-        return self.path.split("/")[-1].split(".")[1]
+        return self.path.split(self.slash)[-1].split(".")[1]
 
     def exists(self):
+        print(f"checking if {self.path} exists")
         try:
             with open(self.path) as f:
                 return True
@@ -61,3 +71,20 @@ class Path:
         except:
             pass
         return []
+
+    def stat(self):
+        return Stat(self.path)
+
+class Stat:
+    def __init__(self, path):
+        self.path = path
+
+    @property
+    def st_size(self):
+        with open(self.path, "rb") as f:
+            return len(f.read())
+
+    @property
+    def st_mtime(self):
+        return 0
+

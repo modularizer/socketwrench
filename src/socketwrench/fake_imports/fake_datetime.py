@@ -12,8 +12,9 @@ class datetime:
     def now(cls):
         return cls(2020, 1, 1, 0, 0, 0, 0)
 
-    def isofomat(self):
+    def isoformat(self):
         return f"{self.year}-{self.month}-{self.day}T{self.hour}:{self.minute}:{self.second}.{self.microsecond}"
 
+    @classmethod
     def fromtimestamp(cls, timestamp):
         return cls(2020, 1, 1, timestamp // 3600, timestamp // 60, timestamp % 60, timestamp % 1)
