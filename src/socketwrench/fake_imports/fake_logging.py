@@ -56,8 +56,14 @@ class Logger:
         
     def log(self, level, msg, *args):
         if level < (self.level or self.root_level):
+            print(level, self.level, self.root_level)
             return
-        name = _levelToName[level]
+
+        closest_level = (10 * (1 + ((level - 5) // 10))) if level < 50 else 50
+        closest_name = _levelToName[closest_level]
+        diff = level - closest_level
+        diff_str = f"+{diff}" if diff > 0 else str(diff) if diff < 0 else ""
+        name = closest_name + diff_str
         if args:
             try:
                 msg = msg % args
@@ -72,7 +78,7 @@ class Logger:
             "NOTSET": "\033[90m",
         }
         end = "\033[0m"
-        print(f"{colors[name]}{name}: {msg}{end}")
+        print(f"{colors[closest_name]}{name}: {msg}{end}")
         
     def setLevel(self, level):
         if isinstance(level, str):
@@ -94,7 +100,7 @@ class logging:
     @classmethod
     def getLogger(cls, name="", level=NOTSET):
         if name not in cls._loggers:
-            cls._loggers[name] = Logger(name)
+            cls._loggers[name] = Logger(name, level)
         return cls._loggers[name]
 
     @classmethod

@@ -35,7 +35,7 @@ class Connection:
                 return request, None, False
             logger.debug(str(request))
             response = self.handler(request)
-            logger.debug(f"\t{response}")
+            logger.log(9, f"\t\t{response}")
             if self.check_cleanup():
                 return request, response, False
             self.send_response(self.socket, response)

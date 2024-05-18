@@ -14,12 +14,15 @@ class _unspecified:
     pass
 
 
-def serve(*args, spoof_modules=_unspecified, socket=_unspecified, **kwargs):
+def serve(*args, spoof_modules=_unspecified, socket=_unspecified, log_level=None, **kwargs):
     if spoof_modules is not _unspecified:
         _spoof_modules(spoof_modules)
     if socket is not _unspecified:
         set_socket_module(socket)
     import socketwrench.public
+    if log_level is not None:
+        from socketwrench.standardlib_dependencies import logging
+        logging.basicConfig(level=log_level)
     return socketwrench.public.serve(*args, **kwargs)
 
 
