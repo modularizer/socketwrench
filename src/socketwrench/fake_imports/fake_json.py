@@ -1,26 +1,25 @@
 
 
 def dumps(obj, indent=None):
-    if isinstance(obj, (int, float)):
-        return str(obj)
+    if isinstance(obj, bool):
+        s = "true" if obj else "false"
+    elif isinstance(obj, (int, float)):
+        s = str(obj)
     elif obj is None:
-        return "null"
-    elif isinstance(obj, bool):
-        return "true" if obj else "false"
+        s = "null"
     elif isinstance(obj, str):
-        return f'"{obj}"'
+        s = f'"{obj}"'
     elif isinstance(obj, list):
         s = "[" + ", ".join(dumps(x) for x in obj) + "]"
         if indent:
-            return s.replace(", ", ",\n" + " " * indent)
-        return s
+            s = s.replace(", ", ",\n" + " " * indent)
     elif isinstance(obj, dict):
         s = "{" + ", ".join(f'"{k}": {dumps(v)}' for k, v in obj.items()) + "}"
         if indent:
-            return s.replace(", ", ",\n" + " " * indent)
-        return s
+            s = s.replace(", ", ",\n" + " " * indent)
     else:
         raise TypeError(f"Cannot serialize {type(obj)}")
+    return s
 
 
 def loads(s):

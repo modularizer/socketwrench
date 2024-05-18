@@ -44,7 +44,7 @@ class Path:
 
     @property
     def suffix(self):
-        return self.path.split(self.slash)[-1].split(".")[1]
+        return "." + self.path.split(self.slash)[-1].split(".")[1]
 
     def exists(self):
         try:

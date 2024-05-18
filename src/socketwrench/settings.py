@@ -1,6 +1,6 @@
 
 config = {
-    "spoof_modules": "all",
+    "spoof_modules": False,
     "socket_module": None
 }
 
