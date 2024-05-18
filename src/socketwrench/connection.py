@@ -1,5 +1,7 @@
-import socket
-import logging
+from socketwrench.standardlib_dependencies import (
+    logging,
+    socket,
+)
 
 from socketwrench.types import Request, Response
 
@@ -15,12 +17,14 @@ class Connection:
                  connection_socket: socket.socket,
                  client_address: tuple,
                  cleanup_event,
-                 chunk_size: int = default_chunk_size):
+                 chunk_size: int = default_chunk_size,
+                 origin: str = ""):
         self.socket = connection_socket
         self.client_addr = client_address
         self.chunk_size = chunk_size
         self.cleanup_event = cleanup_event
         self.handler = handler
+        self.origin = origin
 
         self._rep = None
 
@@ -29,12 +33,15 @@ class Connection:
             request = self.receive_request(self.socket)
             if self.check_cleanup():
                 return request, None, False
+            logger.debug(str(request))
             response = self.handler(request)
+            logger.log(9, f"\t\t{response}")
             if self.check_cleanup():
                 return request, response, False
             self.send_response(self.socket, response)
             return request, response, True
         except Exception as e:
+            logger.error(f"Error handling request: {e}")
             self.close()
             raise e
 
@@ -66,7 +73,7 @@ class Connection:
         else:
             body = b''
 
-        r = Request.from_components(pre_body_bytes, body, self.client_addr, self.socket)
+        r = Request.from_components(pre_body_bytes, body, self.client_addr, self.socket, origin=self.origin)
         return r
 
     def send_response(self, connection_socket: socket.socket, response: Response):
@@ -92,3 +99,4 @@ class Connection:
 
             self._rep = f'<{self.__class__.__name__}({self.socket}, {self.client_addr}, {self.cleanup_event}{r})>'
         return self._rep
+

@@ -1,8 +1,11 @@
 """A simple HTTP server built directly on top of socket.socket."""
-import socket
-import logging
-import time
-from pathlib import Path
+from socketwrench.standardlib_dependencies import (
+    logging,
+    Path,
+    socket,
+    sleep,
+    threading_available
+)
 
 from socketwrench.connection import Connection
 from socketwrench.handlers import RouteHandler, wrap_handler, is_object_instance
@@ -27,18 +30,21 @@ class Server(socket.socket):
     default_favicon = RouteHandler.default_favicon
 
     def __init__(self,
-                 routes: dict | None = None,
+                 routes: dict = None,
                  port: int = default_port,
                  host: str = default_host,
                  backlog: int = default_backlog,
                  chunk_size: int = default_chunk_size,
                  num_connection_threads: int = default_num_connection_threads,
-                 socket_options: dict[int, dict[int, int]] | None = default_socket_options,
+                 socket_options: dict = "default",
                  pause_sleep: float = default_pause_sleep,
                  accept_sleep: float = default_accept_sleep,
                  fallback_handler=None,
                  serve: bool = True,
-                 favicon: str | Path = default_favicon,
+                 favicon: str = default_favicon,
+                 protocol: str = "http",
+                 secured: bool = False,
+                 origin: str = None,
                  **kwargs
                  ):
         """A simple HTTP server built directly on top of socket.socket.
@@ -59,7 +65,13 @@ class Server(socket.socket):
                 Could affect latency. Defaults to 0.1.
             fallback_handler (RequestHandler, optional): The function to use to handle requests that don't match any routes.
             serve (bool, optional): Whether to start serving immediately. Defaults to True.
+            favicon (str, optional): The path to the favicon to use. Defaults to None.
+            protocol (str, optional): The protocol to use for the server in logging statements. Defaults to "http".
+            secured (bool, optional): Whether the server is secured. Defaults to False. Only used for logging full url.
+            origin (str, optional): The full URL to use for the server in logging statements, otherwise we guess. Defaults to None.
         """
+        if socket_options == "default":
+            socket_options = self.default_socket_options
         if isinstance(routes, type):
             routes = routes()
 
@@ -84,6 +96,18 @@ class Server(socket.socket):
 
         self.host = host
         self.port = port
+
+        if origin is None:
+            if secured and protocol.lower() == "http":
+                protocol = "https"
+            else:
+                protocol = protocol.lower()
+            if (protocol == "http" and port == 80) or (protocol == "https" and port == 443):
+                p = ""
+            else:
+                p = f":{port}"
+            origin = f"{protocol}://{host or 'localhost'}{p}"
+        self.origin = origin
         self.backlog = backlog
         self.chunk_size = chunk_size
         self.num_connection_threads = num_connection_threads
@@ -127,7 +151,7 @@ class Server(socket.socket):
             for option, value in options.items():
                 self.setsockopt(level, option, value)
 
-    def serve(self, thread: bool = False, cleanup_event = None, pause_event = None, nav_path="/", **kwargs) -> None | tuple:
+    def serve(self, thread: bool = False, cleanup_event = None, pause_event = None, nav_path="/", **kwargs) -> tuple:
         if not isinstance(self, Server):
             if isinstance(self, str) or "<module" in str(type(self)):
                 return Server.serve_module(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, nav_path=nav_path, **kwargs)
@@ -135,13 +159,13 @@ class Server(socket.socket):
                 return Server.serve_class(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, nav_path=nav_path,**kwargs)
             # allows classmethod-like usage of Server.serve(my_server_instance)
             return Server(self, nav_path=nav_path, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
-        if thread:
-            import threading
+        if thread and threading_available:
+            from socketwrench.standardlib_dependencies import Event, Thread
 
-            self.cleanup_event = threading.Event()
-            self.pause_event = threading.Event()
+            self.cleanup_event = Event()
+            self.pause_event = Event()
 
-            t = threading.Thread(target=self.serve, args=(False, self.cleanup_event, self.pause_event), daemon=True)
+            t = Thread(target=self.serve, args=(False, self.cleanup_event, self.pause_event), daemon=True)
             t.start()
             self.server_thread = t
             return t, self.cleanup_event, self.pause_event
@@ -150,15 +174,15 @@ class Server(socket.socket):
         self.listen(self.backlog)
         logger.info("Serving HTTP on port " + str(self.port) + "...")
         logger.info(f"Press Ctrl+C to stop the server.")
-        logger.info(f"Go to http://{self.host or 'localhost'}:{self.port}/swagger to see documentation.")
-        logger.info(f"Go to http://{self.host or 'localhost'}:{self.port}/api for an api playground.")
+        logger.info(f"Go to {self.origin}/swagger to see documentation.")
+        logger.info(f"Go to {self.origin}/api for an api playground.")
 
         while cleanup_event is None or (not cleanup_event.is_set()):
             if self.pause_sleep and pause_event is not None:
                 while pause_event.is_set() and (cleanup_event is None or (not cleanup_event.is_set())):
-                    time.sleep(self.pause_sleep)
+                    sleep(self.pause_sleep)
             if self.accept_sleep:
-                time.sleep(self.accept_sleep)
+                sleep(self.accept_sleep)
             connection = self.accept_connection()
 
             # handle connection
@@ -172,7 +196,8 @@ class Server(socket.socket):
         client_connection, client_address = self.accept()
         connection = Connection(self.handler, client_connection, client_address,
                                 cleanup_event=self.cleanup_event,
-                                chunk_size=self.chunk_size)
+                                chunk_size=self.chunk_size,
+                                origin=self.origin)
         return connection
 
     def close(self) -> None:
@@ -186,21 +211,21 @@ class Server(socket.socket):
         if self._rep is None:
             r = f"<{self.__class__.__name__}("
             if self.port != self.default_port:
-                r += f"{self.port=}, "
+                r += f"port={self.port}, "
             if self.host != self.default_host:
-                r += f"{self.host=}, "
+                r += f"host={self.host}, "
             if self.backlog != self.default_backlog:
-                r += f"{self.backlog=}, "
+                r += f"backlog={self.backlog}, "
             if self.chunk_size != self.default_chunk_size:
-                r += f"{self.chunk_size=}, "
+                r += f"chunk_size={self.chunk_size}, "
             if self.num_connection_threads != self.default_num_connection_threads:
-                r += f"{self.num_connection_threads=}, "
+                r += f"num_connection_threads={self.num_connection_threads}, "
             if self.init_socket_options != self.default_socket_options:
-                r += f"{self.init_socket_options=}, "
+                r += f"init_socket_options={self.init_socket_options}, "
             if self.pause_sleep != self.default_pause_sleep:
-                r += f"{self.pause_sleep=}, "
+                r += f"pause_sleep={self.pause_sleep}, "
             if self.accept_sleep != self.default_accept_sleep:
-                r += f"{self.accept_sleep=}, "
+                r += f"accept_sleep={self.accept_sleep}, "
             r = r.rstrip(", ")
             r += ")>"
             self._rep = r
@@ -215,17 +240,16 @@ class Server(socket.socket):
     @classmethod
     def serve_module(cls, module, thread: bool = False, cleanup_event = None, pause_event = None, **kwargs):
         if isinstance(module, Path):
-            import importlib
-            import sys
+            from socketwrench.standardlib_dependencies import importlib, modules
             module = importlib.util.spec_from_file_location("module", module)
             module = importlib.util.module_from_spec(module)
             module.__file__ = module.__spec__.origin
             module.__package__ = module.__spec__.name
-            sys.modules[module.__spec__.name] = module
+            modules[module.__spec__.name] = module
             module.__spec__.loader.exec_module(module)
         elif isinstance(module, str):
             try:
-                import importlib
+                from socketwrench.standardlib_dependencies import importlib
                 module = importlib.import_module(module)
             except ImportError:
                 parts = module.split(".")

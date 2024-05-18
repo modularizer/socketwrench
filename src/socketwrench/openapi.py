@@ -1,5 +1,7 @@
-import inspect
-from pathlib import Path
+from socketwrench.standardlib_dependencies import (
+    inspect,
+    Path,
+)
 
 from socketwrench import FileResponse, Response
 from socketwrench.tags import gettag
@@ -41,7 +43,7 @@ def openapi_schema(routes_dict):
         if "responses" not in route_info:
             sig = getattr(func, "sig", inspect.signature(func)) or inspect.signature(func)
             return_type = sig.return_annotation
-            if return_type is inspect._empty:
+            if return_type is inspect.Parameter.empty:
                 try:
                     last_line = inspect.getsourcelines(func)[0][-1].strip()
                     if "return" not in last_line:
@@ -80,7 +82,7 @@ def openapi_schema(routes_dict):
                                 return_type = Response
                 except:
                     pass
-            if return_type is not inspect._empty:
+            if return_type is not inspect.Parameter.empty:
                 if return_type is None:
                     route_info["responses"] = {
                         "200": {

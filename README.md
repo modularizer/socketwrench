@@ -1,5 +1,5 @@
 # socketwrench
-A webserver based on `socket.socket` with no dependencies other than the standard library.
+A webserver based on `socket.socket` with no dependencies whatsoever other **socket** (or a substitute you pass in ) and **optional** standard library dependencies which improve features. See [dependencies](#dependencies) for more info.
 Provides a lightweight quickstart to make an API which supports OpenAPI, Swagger, and more.
 
 ## NOTE:
@@ -29,7 +29,7 @@ class MyServer:
         return "world"
   
 if __name__ == '__main__':
-    serve(MyServer)
+    serve(MyServer, thread=True)
     # OR
     # m = MyServer()
     # serve(m)
@@ -111,8 +111,51 @@ No need to use our favicon! pass a `str | Path` `.ico` filepath to `favicon` arg
 ### fallback handler
 Add a custom function to handle any requests that don't match any other routes.
 
+# Dependencies
+Default behavior is to use the standard library only. However, if you do not have the full standard library, socketwrench _should_ still work.
+This is a work in progress as I am attempting to support micropython, circuitpython, etc. but I have not tested on these environments yet.
+
+### How it works:
+* `socket.socket` is the only required dependency, BUT you can pass in a substitute socket object if you want.
+* The following standard library modules are used, BUT if import fails for any of them we fall back on dump fake versions I made in [src/socketwrench/fake_imports](.src/socketwrench/fake_imports) which attempt to approximate the same functionality
+```python
+import socket
+
+import builtins  # very niche case use for if a function is typehinted to accept a type, e.g. `def f(x: type):` and you pass in the type name via a string query e.g. `?x=int`
+import inspect  # used often for getting function signatures, autofilling parameters, etc., spoof version uses `__annotations__` and `__defaults__` of functions
+from sys import argv # only used in commandline mode
+from argparse import ArgumentParser # only used in commandline mode
+from tempfile import TemporaryFile # only used if you attempt to return a folder using a StaticFileHandler
+from zipfile import ZipFile # only used if you attempt to return a folder using a StaticFileHandler
+from functools import wraps, partial # used regularly but easily replaced
+import dataclasses # only used if your python function returns a dataclass which we try to coerce to json
+from datetime import datetime  # used for Last-Modified header of File responses
+from pathlib import Path # used for file responses and static file serving, spoof version works okay
+from json import dumps, loads # used for json responses, spoof version works okay
+import logging # used for logging, spoof version works okay
+from time import sleep # only used if pause_sleep > 0 or accept_sleep > 0, spoof version does not sleep at all
+from threading import Event, Thread # only used if you `thread=True` in `serve` function (defaults to False)
+from traceback import format_exception  # only used if error_mode="traceback"
+import importlib # only used if you pass a string into the serve module as the item to be served, e.g. in commandline mode
+from sys import modules # only used if you pass a string into the serve module as the item to be served, e.g. in commandline mode
+```
+
+### sample
+```python
+from socketwrench import serve
+import socket
+
+class Sample:
+    def hello(self):
+        return "world"
+
+if __name__ == '__main__':
+    serve(Sample, spoof_modules="all", thread=True, socket=socket, port=8123)
+```
+
 # Planned Features
-* [ ] Implement nesting / recursion to serve deeper routes and/or multiple classes
+* [x] Implement nesting / recursion to serve deeper routes and/or multiple classes
+* [x] support default navigation pages to help show links to available routes
 * [ ] Enforce OpenAPI spec with better error responses
 * [x] Serve static folders
 * [x] Make a better playground for testing endpoints
@@ -127,7 +170,16 @@ Add a custom function to handle any requests that don't match any other routes.
   * [ ] document fallback handler
   * [ ] document regexp / match routes
 * [ ] Make a client-side python proxy object to make API requests from python
+
+### Environment Support
+* [x] Remove `|` typehints to allow for older python versions :/ (this makes me sad)
+* [x] Remove standard library dependencies which microcontrollers may not have
+* [x] Allow passing in a socket object
+  * [ ] test and support different kinds of sockets and objects pretending to be sockets
 * [ ] Test on ESP32 and other microcontrollers
+* [ ] Test in browser-based python environments using pyodide
+
+### Other
 * [ ] Ideas? Let me know!
 
 # Other Usage Modes

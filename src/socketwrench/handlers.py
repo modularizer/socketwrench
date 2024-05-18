@@ -1,16 +1,16 @@
-import inspect
-import json
-import builtins
-import logging
-import traceback
-from contextlib import suppress
-from functools import wraps
-from pathlib import Path
-import socket
+from socketwrench.standardlib_dependencies import (
+    builtins,
+    inspect,
+    loads,
+    logging,
+    Path,
+    socket,
+    wraps
+)
 
 from socketwrench.tags import tag, get, gettag
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
-    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, HTMLResponse, url_decode, StandardHTMLResponse
+    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, url_decode, StandardHTMLResponse
 
 logger = logging.getLogger("socketwrench")
 
@@ -88,16 +88,16 @@ def _typehint_matches(typehint, others):
     return typehint in others or tryissubclass(typehint, others) or (hasattr(typehint, "__origin__") and typehint.__origin__ in others) or (hasattr(typehint, "__args__") and any(_typehint_matches(t, others) for t in typehint.__args__))
 
 
-def cast_to_typehint(value: str, typehint = inspect._empty):
+def cast_to_typehint(value: str, typehint = inspect.Parameter.empty):
 
     # unless specifically typed as a string, cast any numeric value to int or float
-    if _typehint_matches(typehint, [int, inspect._empty]):
+    if _typehint_matches(typehint, [int, inspect.Parameter.empty]):
         if value.isdigit() or (value.startswith("-") and value[1:].isdigit())  and not '.' in value:
             return int(value)
-    if _typehint_matches(typehint, [float, inspect._empty]):
+    if _typehint_matches(typehint, [float, inspect.Parameter.empty]):
         if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
             return float(value)
-    if _typehint_matches(typehint, [bool, inspect._empty]):
+    if _typehint_matches(typehint, [bool, inspect.Parameter.empty]):
         if value.lower() in ["false", "f", "no", "n"]:
             return False
         if value.lower() in ["true", "t", "yes", "y"]:
@@ -109,35 +109,35 @@ def cast_to_typehint(value: str, typehint = inspect._empty):
             return False
         if value.lower() in ["1", "ok"]:
             return True
-    if _typehint_matches(typehint, [list, inspect._empty]):
+    if _typehint_matches(typehint, [list, inspect.Parameter.empty]):
         if value.startswith("[") and value.endswith("]"):
             try:
-                return json.loads(value)
+                return loads(value)
             except:
                 pass
-    if _typehint_matches(typehint, [tuple, inspect._empty]):
+    if _typehint_matches(typehint, [tuple, inspect.Parameter.empty]):
         if value.startswith("(") and value.endswith(")"):
             try:
                 s = '[' + value[1:-1] + ']'
-                return tuple(json.loads(s))
+                return tuple(loads(s))
             except:
                 pass
-    if _typehint_matches(typehint, [dict, inspect._empty]):
+    if _typehint_matches(typehint, [dict, inspect.Parameter.empty]):
         if value.startswith("{") and value.endswith("}"):
             try:
-                return json.loads(value)
+                return loads(value)
             except:
                 pass
     if _typehint_matches(typehint, [frozenset]):
         if value.startswith("{") and value.endswith("}"):
             try:
-                return frozenset(json.loads('[' + value[1:-1] + ']'))
+                return frozenset(loads('[' + value[1:-1] + ']'))
             except:
                 pass
-    if _typehint_matches(typehint, [set, inspect._empty]):
+    if _typehint_matches(typehint, [set, inspect.Parameter.empty]):
         if value.startswith("{") and value.endswith("}"):
             try:
-                return set(json.loads('[' + value[1:-1] + ']'))
+                return set(loads('[' + value[1:-1] + ']'))
             except:
                 pass
     if typehint is bytes or tryissubclass(typehint, bytes):
@@ -147,7 +147,7 @@ def cast_to_typehint(value: str, typehint = inspect._empty):
     if typehint is memoryview or tryissubclass(typehint, memoryview):
         return memoryview(value.encode())
     if typehint is type:
-        if hasattr(builtins, value):
+        if builtins and hasattr(builtins, value):
             return getattr(builtins, value)
         return globals().get(value, value)
     if hasattr(typehint, "__origin__"):
@@ -169,7 +169,6 @@ def cast_to_types(query, signature):
 
 
 def preprocess_args(_handler):
-    import inspect
     sig = inspect.signature(_handler)
 
     # make sure the handler doesn't use "args" unless as *args
@@ -197,7 +196,7 @@ def preprocess_args(_handler):
             i = available_type_values.index(param.annotation)
             key = available_type_keys[i]
             special_params[key].append(name)
-        elif param.annotation is inspect._empty and param.name in available_types:
+        elif param.annotation is inspect.Parameter.empty and param.name in available_types:
             special_params[param.name].append(name)
         elif param.name in available_types:
             a = param.annotation
@@ -247,7 +246,7 @@ def preprocess_args(_handler):
         b = request.body
         if b:
             try:
-                body = json.loads(b.decode())
+                body = loads(b.decode())
                 int_keys = sorted([int(k) for k in body if k.isdigit()])
                 if set(int_keys) != set(range(len(args), len(args) + len(int_keys))):
                     raise ValueError("Unable to parse args.")
@@ -288,6 +287,7 @@ def wrap_handler(_handler, error_mode: str = None):
             else:
                 a, kw, return_annotation = parser(request, route_params=route_params)
                 r = _handler(*a, **kw)
+                print(f"{r=}, {type(r)}")
                 if isinstance(r, Response):
                     response = r
                 elif isinstance(r, HTTPStatusCode):
@@ -310,8 +310,14 @@ def wrap_handler(_handler, error_mode: str = None):
             elif _error_mode == ErrorModes.SHORT:
                 msg = str(e).encode()
             elif _error_mode == ErrorModes.LONG:
-                msg = traceback.format_exc().encode()
-            response = ErrorResponse(msg, version=request.version)
+                from socketwrench.standardlib_dependencies import format_exception
+                tb = format_exception(type(e), e, e.__traceback__)
+                # trim the first part of the traceback which just shows socketwrench internals _handler(*a, **kw)
+                tb = ([tb[0]] if tb else [b"Internal Server Error"]) + tb[2:]
+                msg = "".join(tb)
+                if len(msg.splitlines()) == 2:
+                    msg = msg.splitlines()[1]
+            response = ErrorResponse(msg.encode(), version=request.version)
         return response
 
     tag(wrapper,
@@ -336,7 +342,7 @@ class StaticFileHandler(MatchableHandlerABC):
     is_wrapped = True
     allowed_methods = ["GET", "HEAD"]
 
-    def __init__(self, path: Path | str, route: str = None):
+    def __init__(self, path, route: str = None):
         self.path = path
         self.route = route or "/" + path.name
         self.allowed_methods = ["GET", "HEAD"]
@@ -347,7 +353,6 @@ class StaticFileHandler(MatchableHandlerABC):
         added = route[len(self.route):]
         p = (self.path / added.strip("/")) if added else self.path
         if not p.exists():
-            print("path doesn't exist", p, route, added)
             return False
         return True
 
@@ -367,7 +372,6 @@ class StaticFileHandler(MatchableHandlerABC):
             contents = "<!DOCTYPE html><html><body><ul>" + "\n".join([f"<li><a href='{route}/{f.name}'>{f.name}</a></li>" for f in folder_contents]) + "</ul></body></html>"
             return Response(contents.encode(), version=request.version)
         r = FileResponse(p, version=request.version)
-        print("content type", r.headers.get("Content-Type"))
         return r
 
 
@@ -451,11 +455,12 @@ def matches_variadic_route(route: str, variadic_route: str) -> dict:
                 elif nonvariadic_end < len(r):
                     return False
                 found_matches.update(variables)
+
+
         return found_matches
     except Exception as e:
-        print("Error", e)
-        print(str(traceback.format_exc()))
         return False
+
 
 def sort_variadic_routes(patterns):
     q = []
@@ -503,12 +508,12 @@ class RouteHandler:
     default_favicon = resources_folder / "favicon.ico"
 
     def __init__(self,
-                 routes: dict | None = None,
+                 routes: dict = None,
                  fallback_handler=None,
                  base_path: str = "/",
                  require_tag: bool = False,
-                 error_mode: str = ErrorModes.HIDE,
-                 favicon: str | None = default_favicon,
+                 error_mode: str = None,
+                 favicon: str = default_favicon,
                  nav_path = "/",
                  nav_recursion = True,
                  ):
@@ -538,17 +543,18 @@ class RouteHandler:
             }
             if isinstance(routes, dict):
                 for k, v in routes.items():
-                    sub = self.base_path + (k[1:] if k.startswith("/") else k) + ("/" if not k.endswith("/") else "")
+                    sub = self.base_path + (k[1:] if k.startswith("/") else k) + "/"
                     sub = sub.replace("//", "/")
 
                     if isinstance(v, type):
-                        self.sub_route_handlers[sub] = RouteHandler(v(), base_path=sub, **kw)
+                        self._add_subroute(sub, RouteHandler(v(), base_path=sub, **kw))
                     elif isinstance(v, RouteHandler):
-                        self.sub_route_handlers[sub] = v
+                        v.base_path = sub
+                        self._add_subroute(sub, v)
                     elif isinstance(v, dict):
-                        self.sub_route_handlers[sub] = RouteHandler(v, base_path=sub, **kw)
+                        self._add_subroute(sub, RouteHandler(v, base_path=sub, **kw))
                     elif is_object_instance(v):
-                        self.sub_route_handlers[sub] = RouteHandler(v, base_path=sub, **kw)
+                        self._add_subroute(sub, RouteHandler(v, base_path=sub, **kw))
                     else:
                         self[k] = v
             else:
@@ -570,6 +576,17 @@ class RouteHandler:
         }
         if self.favicon_path:
             self.default_routes["/favicon.ico"] = wrap_handler(self.favicon, error_mode=error_mode)
+
+        default_route_keys = list(self.default_routes.keys())
+        for k in default_route_keys:
+            if k in self.routes:
+                del self.default_routes[k]
+
+
+    def _add_subroute(self, sub, handler):
+        if sub in self.sub_route_handlers:
+            raise NotImplementedError(f"Route {sub} already exists. Duplicate routes are not allowed.")
+        self.sub_route_handlers[sub] = handler
 
     def _all_routes(self, recursive=True):
         d = {
@@ -597,7 +614,7 @@ class RouteHandler:
 
     @get
     def swagger(self) -> FileResponse:
-        return FileResponse(Path(__file__).parent / "resources" / "swagger.html")
+        return FileResponse(self.resources_folder / "swagger.html")
 
     @get
     def playground(self) -> Path:
@@ -622,70 +639,163 @@ class RouteHandler:
                         continue
                     routes = getattr(v, "routes", [k])
                     for route in routes:
-                        with suppress(Exception):
+                        try:
                             self[route] = v
+                        except:
+                            pass
         if callable(obj):
             self[""] = obj
 
-    def get_nav(self):
+    def get_nav(self, start=""):
         routes = self._all_routes(self.nav_recursion)
         links = []
         for route in routes:
-            if route.startswith(self.base_path):
-                r = route[len(self.base_path):]
-                if not r.endswith("/"):
-                    r += "/"
-                n = r.count("/")
-                links.append(self.base_path + r)
+            if route.startswith(start):
+                r = route[len(start):]
+                if r.startswith("/"):
+                    r = r[1:]
+                links.append((f"./{r}", route))
         links = sorted(links)
-        nav = "<ul>\n" + "\n\t".join([f'<li><a href="{l}">{l}</a></li>' if '{' not in l else f'<li>{l}</li>'  for l in links]) + "\n</ul>"
+
+        # sort links into a nested order
+        nested = {}
+        for rel, full in links:
+            parts = full.strip("/").split("/")
+            n = nested
+            for part in parts[:-1]:
+                if part in n:
+                    if not isinstance(n[part], dict):
+                        n[part] = {}
+                    n = n[part]
+                else:
+                    n[part] = {}
+                    n = n[part]
+            n[parts[-1]] = (rel, full)
+
+        # now collapse back so if a parent has only one child, the keys are merged
+        def collapse(d, name=""):
+            if not d:
+                return d, name
+            if len(d) == 1:
+                k = list(d.keys())[0]
+                collapsed, new_name = collapse(d[k], name + "/" + k)
+                return collapsed, name + "/" + new_name
+            collapsed = {}
+            if isinstance(d, tuple):
+                return d, name
+            else:
+                for k, v in d.items():
+                    if isinstance(v, dict):
+                        new_v, new_k = collapse(v, k)
+                        collapsed[new_k] = new_v
+                    else:
+                        collapsed[k] = v
+            return collapsed, name
+
+        nested, name = collapse(nested)
+        def gen_nav(sub, p=""):
+            nav = ""
+            for k, v in sub.items():
+                if isinstance(v, dict):
+                    # make the list item contain a collapsible section
+                    nav += f'<li><details><summary>{p}/{k}</summary><ul>{gen_nav(v, p + "/" + k)}</ul></details></li>'
+
+                    # nav += f'<li>{k}<ul>{gen_nav(v)}</ul></li>'
+                elif isinstance(v, tuple):
+                    rel, full = v
+                    nav += f'<li><a href="{rel}">{full}</a></li>'
+            return nav
+
+        name = name.replace("//", "/")
+        nav = gen_nav(nested, name)
+
+        if name:
+            nav = f"<h1>{name}</h1>\n<ul>{nav}</ul>"
+        else:
+            nav = f"<ul>{nav}</ul>"
+
+
+        # nav = "<ul>\n" + "\n\t".join([f'<li><a href="{rel}">{full}</a></li>' if '{' not in full else f'<li>{full}</li>' for rel, full in links]) + "\n</ul>"
         return StandardHTMLResponse(nav, title=self.base_path)
 
     def __call__(self, request: Request) -> Response:
         route = request.path.route()
-
-        route_diff = route[len(self.base_path):]
-        if not route_diff.startswith("/"):
-            route_diff = "/" + route_diff
-        if self.nav_path and (route_diff == self.nav_path or route_diff == self.nav_path + "/"):
-            return self.get_nav()
 
         if not route.startswith(self.base_path):
             return Response(b'Not Found',
                             status_code=404,
                             headers={"Content-Type": "text/plain"},
                             version=request.version)
-        # search from longest to shortest subroute by length or string
-        subroute_keys = sorted(self.sub_route_handlers.keys(), key=lambda x: (len(x), x), reverse=True)
-        for k in subroute_keys:
-            if route.startswith(k):
-                return self.sub_route_handlers[k](request)
-
-        handler = self.routes.get(route, None)
 
         route_params = {}
-        if handler is None:
+        if route in self.default_routes:
+            handler = self.default_routes[route]
+        elif route in self.routes:
+            handler = self.routes[route]
+        else:
+            # search from longest to shortest subroute by length or string
+            subroute_keys = sorted(self.sub_route_handlers.keys(), key=lambda x: (len(x), x), reverse=True)
+            for k in subroute_keys:
+                if route.startswith(k):
+                    return self.sub_route_handlers[k](request)
+
             for k, v in self.matchable_routes.items():
                 if v.match(route):
                     handler = v
                     break
             else:
-                if route in self.default_routes:
-                    handler = self.default_routes[route]
-                elif "{" in (x:= url_decode(route)) and x in self.variadic_routes:
-                    raise ValueError(f"Route {route} is variadic , {{}} patterns should be filled in")
-                else:
-                    # check all variadic routes in the correct order, first by number of parts, then number of variadic parts, then length of nonvariadic parts
-                    variadic_patterns = sort_variadic_routes(list(self.variadic_routes.keys()))
+                x = url_decode(route)
+                if "{" in x and x in self.variadic_routes:
+                    # raise ValueError(f"Route {route} is variadic, {{}} patterns should be filled in")
+                    return ErrorResponse(f"Route {x} is variadic, {{}} patterns should be filled in".encode(), version=request.version)
+                # check all variadic routes in the correct order, first by number of parts, then number of variadic parts, then length of nonvariadic parts
+                variadic_patterns = sort_variadic_routes(list(self.variadic_routes.keys()))
 
-                    for k in variadic_patterns:
-                        # these are in format /a/{b}/c/{d}/e, convert to regexp groups
-                        route_params = matches_variadic_route(route, k)
-                        if route_params:
-                            handler = self.variadic_routes[k]
+                for k in variadic_patterns:
+                    # these are in format /a/{b}/c/{d}/e, convert to regexp groups
+                    route_params = matches_variadic_route(route, k)
+                    if route_params:
+                        handler = self.variadic_routes[k]
+                        for _k, _v in route_params.items():
+                            if hasattr(handler, "__dict__") and _k in handler.__dict__:
+                                options = handler.__dict__[_k]
+                                if _v == options:
+                                    # good! matches exactly
+                                    continue
+                                elif isinstance(options, (list, tuple, set, frozenset)):
+                                    for o in options:
+                                        if str(o) == _v:
+                                            # good! matches exactly one of the options
+                                            break
+                                        try:
+                                            if isinstance(o, type):
+                                                if isinstance(_v, o):
+                                                    # good! matches the type of one of the options
+                                                    break
+                                        except:
+                                            pass
+                                    else:
+                                        # oops! didn't match any of the options
+                                        break
+                                    continue
+                                elif isinstance(options, type):
+                                    try:
+                                        options(_v)
+                                        continue
+                                    except:
+                                        # oops! didn't match the type
+                                        break
+                                else:
+                                    # unable to interpret the options, maybe raise an error?
+                                    continue
+                        else:
+                            # this means the route_params matched all the options, which means we found the right handler
                             break
-                    else:
-                        handler = self.fallback_handler
+                else:
+                    handler = self.fallback_handler
+
+        if handler is None and route.endswith(self.nav_path):
+            return self.get_nav(route[:-len(self.nav_path)])
 
         if handler is None:
             # send a response with 404
@@ -694,12 +804,9 @@ class RouteHandler:
                             headers={"Content-Type": "text/plain"},
                             version=request.version)
         allowed_methods = gettag(handler, "allowed_methods", None)
-        # if allowed_methods is None:
-        #     print(handler, handler.__dict__)
         if request.method == "HEAD" and "GET" in allowed_methods:
             allowed_methods = list(allowed_methods) + ["HEAD"]
         if allowed_methods is None or request.method not in allowed_methods:
-            print("Method Not Allowed", route, request.method, allowed_methods, handler)
             return Response(b'Method Not Allowed',
                             status_code=405,
                             headers={"Content-Type": "text/plain"},
@@ -710,7 +817,8 @@ class RouteHandler:
             r = handler(request)
         return r
 
-    def route(self, handler, route: str | None = None, allowed_methods: tuple[str] | None = None):
+    # def route(self, handler, route: str | None = None, allowed_methods: tuple[str] | None = None):
+    def route(self, handler, route = None, allowed_methods = None):
         route = route.replace("//", "/")
         if isinstance(handler, Path):
             handler = StaticFileHandler(Path, route)
@@ -728,7 +836,7 @@ class RouteHandler:
         if self.base_path == "/" and route.startswith("/"):
             route = route[1:]
 
-        sub = self.base_path + route + ("/" if not route.endswith("/") else "")
+        sub = self.base_path + route
         sub = sub.replace("//", "/")
         if "{" in route and "}" in route:
             self.variadic_routes[sub] = h
@@ -737,22 +845,22 @@ class RouteHandler:
         else:
             self.routes[sub] = h
 
-    def get(self, handler=None, route: str | None = None):
+    def get(self, handler=None, route: str = None):
         return self.route(handler, route, allowed_methods=("GET",))
 
-    def post(self, handler=None, route: str | None = None):
+    def post(self, handler=None, route: str = None):
         return self.route(handler, route, allowed_methods=("POST",))
 
-    def put(self, handler=None, route: str | None = None):
+    def put(self, handler=None, route: str = None):
         return self.route(handler, route, allowed_methods=("PUT",))
 
-    def patch(self, handler=None, route: str | None = None):
+    def patch(self, handler=None, route: str = None):
         return self.route(handler, route, allowed_methods=("PATCH",))
 
-    def delete(self, handler=None, route: str | None = None):
+    def delete(self, handler=None, route: str = None):
         return self.route(handler, route, allowed_methods=("DELETE",))
 
-    def head(self, handler=None, route: str | None = None):
+    def head(self, handler=None, route: str = None):
         route = route or handler.__name__
 
         def wrapper(request: Request) -> Response:
@@ -770,6 +878,9 @@ class RouteHandler:
 
     def __getattr__(self, item):
         return self.__class__(self.fallback_handler, self.routes, self.base_path + item + "/")
+
+    def __repr__(self):
+        return f"<RouteHandler {self.base_path}>"
 
 
 if __name__ == "__main__":
