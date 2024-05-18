@@ -739,7 +739,8 @@ class RouteHandler:
                 else:
                     x = url_decode(route)
                     if "{" in x and x in self.variadic_routes:
-                        raise ValueError(f"Route {route} is variadic , {{}} patterns should be filled in")
+                        # raise ValueError(f"Route {route} is variadic, {{}} patterns should be filled in")
+                        return ErrorResponse(f"Route {x} is variadic, {{}} patterns should be filled in".encode(), version=request.version)
                     # check all variadic routes in the correct order, first by number of parts, then number of variadic parts, then length of nonvariadic parts
                     variadic_patterns = sort_variadic_routes(list(self.variadic_routes.keys()))
 
