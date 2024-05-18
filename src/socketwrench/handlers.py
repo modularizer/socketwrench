@@ -1,14 +1,25 @@
-from socketwrench.builtin_imports import loads, Path, socket, empty, signature, VAR_POSITIONAL, VAR_KEYWORD, getmembers, isfunction
+from socketwrench.standardlib_dependencies import (
+    builtins,
+    inspect,
+    loads,
+    logging,
+    Path,
+    socket,
+    wraps
+)
+
 from socketwrench.tags import tag, get, gettag
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
     HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, url_decode, StandardHTMLResponse
+
+logger = logging.getLogger("socketwrench")
 
 
 class Autofill:
     def request(self, request: Request) -> Request:
         return request
 
-    def socket(self, request: Request):
+    def socket(self, request: Request) -> socket.socket:
         return request.connection_socket
 
     def query(self, request: Request) -> Query:
@@ -56,7 +67,7 @@ available_types = {
     "method": Method,
     "file": File,
     "client_addr": ClientAddr,
-    "socket": socket,
+    "socket": socket.socket,
 }
 
 def tryissubclass(a, others):
@@ -77,17 +88,16 @@ def _typehint_matches(typehint, others):
     return typehint in others or tryissubclass(typehint, others) or (hasattr(typehint, "__origin__") and typehint.__origin__ in others) or (hasattr(typehint, "__args__") and any(_typehint_matches(t, others) for t in typehint.__args__))
 
 
-def cast_to_typehint(value: str, typehint = empty):
+def cast_to_typehint(value: str, typehint = inspect.Parameter.empty):
+
     # unless specifically typed as a string, cast any numeric value to int or float
-    if _typehint_matches(typehint, [int, empty]):
+    if _typehint_matches(typehint, [int, inspect.Parameter.empty]):
         if value.isdigit() or (value.startswith("-") and value[1:].isdigit())  and not '.' in value:
             return int(value)
-    if _typehint_matches(typehint, [float, empty]):
-        try:
+    if _typehint_matches(typehint, [float, inspect.Parameter.empty]):
+        if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
             return float(value)
-        except:
-            pass
-    if _typehint_matches(typehint, [bool, empty]):
+    if _typehint_matches(typehint, [bool, inspect.Parameter.empty]):
         if value.lower() in ["false", "f", "no", "n"]:
             return False
         if value.lower() in ["true", "t", "yes", "y"]:
@@ -99,20 +109,20 @@ def cast_to_typehint(value: str, typehint = empty):
             return False
         if value.lower() in ["1", "ok"]:
             return True
-    if _typehint_matches(typehint, [list, empty]):
+    if _typehint_matches(typehint, [list, inspect.Parameter.empty]):
         if value.startswith("[") and value.endswith("]"):
             try:
                 return loads(value)
             except:
                 pass
-    if _typehint_matches(typehint, [tuple, empty]):
+    if _typehint_matches(typehint, [tuple, inspect.Parameter.empty]):
         if value.startswith("(") and value.endswith(")"):
             try:
                 s = '[' + value[1:-1] + ']'
                 return tuple(loads(s))
             except:
                 pass
-    if _typehint_matches(typehint, [dict, empty]):
+    if _typehint_matches(typehint, [dict, inspect.Parameter.empty]):
         if value.startswith("{") and value.endswith("}"):
             try:
                 return loads(value)
@@ -124,7 +134,7 @@ def cast_to_typehint(value: str, typehint = empty):
                 return frozenset(loads('[' + value[1:-1] + ']'))
             except:
                 pass
-    if _typehint_matches(typehint, [set, empty]):
+    if _typehint_matches(typehint, [set, inspect.Parameter.empty]):
         if value.startswith("{") and value.endswith("}"):
             try:
                 return set(loads('[' + value[1:-1] + ']'))
@@ -137,13 +147,9 @@ def cast_to_typehint(value: str, typehint = empty):
     if typehint is memoryview or tryissubclass(typehint, memoryview):
         return memoryview(value.encode())
     if typehint is type:
-        try:
-            import builtins
-            if hasattr(builtins, value):
-                return getattr(builtins, value)
-            return globals().get(value, value)
-        except:
-            pass
+        if builtins and hasattr(builtins, value):
+            return getattr(builtins, value)
+        return globals().get(value, value)
     if hasattr(typehint, "__origin__"):
         if typehint.__origin__ in [list, tuple, set, frozenset]:
             return typehint([cast_to_typehint(v, typehint.__args__[0]) for v in value])
@@ -163,14 +169,14 @@ def cast_to_types(query, signature):
 
 
 def preprocess_args(_handler):
-    sig = signature(_handler)
+    sig = inspect.signature(_handler)
 
     # make sure the handler doesn't use "args" unless as *args
-    if "args" in sig.parameters and sig.parameters["args"].kind != VAR_POSITIONAL:
+    if "args" in sig.parameters and sig.parameters["args"].kind != inspect.Parameter.VAR_POSITIONAL:
         raise ValueError("The handler cannot use 'args' as a parameter unless as *args.")
 
     # make sure the handler doesn't use "kwargs" unless as **kwargs
-    if "kwargs" in sig.parameters and sig.parameters["kwargs"].kind != VAR_KEYWORD:
+    if "kwargs" in sig.parameters and sig.parameters["kwargs"].kind != inspect.Parameter.VAR_KEYWORD:
         raise ValueError("The handler cannot use 'kwargs' as a parameter unless as **kwargs.")
 
     autofill = Autofill()
@@ -190,7 +196,7 @@ def preprocess_args(_handler):
             i = available_type_values.index(param.annotation)
             key = available_type_keys[i]
             special_params[key].append(name)
-        elif param.annotation is empty and param.name in available_types:
+        elif param.annotation is inspect.Parameter.empty and param.name in available_types:
             special_params[param.name].append(name)
         elif param.name in available_types:
             a = param.annotation
@@ -203,9 +209,9 @@ def preprocess_args(_handler):
 
         if collector_found:
             pass
-        elif param.kind == VAR_POSITIONAL:
+        elif param.kind == inspect.Parameter.VAR_POSITIONAL:
             collector_found = True
-        elif param.kind == VAR_KEYWORD:
+        elif param.kind == inspect.Parameter.VAR_KEYWORD:
             collector_found = True
         else:
             args_before_collector += 1
@@ -271,6 +277,8 @@ def wrap_handler(_handler, error_mode: str = None):
 
     # make a stub function that takes the same parameters as the handler but doesn't do anything
     # use inspect.signature to get the parameters
+
+    @wraps(_handler)
     def wrapper(request: Request, route_params: dict = None) -> Response:
         try:
             if parser is None:
@@ -292,6 +300,7 @@ def wrap_handler(_handler, error_mode: str = None):
                     except:
                         response = Response(r, version=request.version)
         except Exception as e:
+            logger.exception(e)
             _error_mode = error_mode if error_mode is not None else ErrorModes.DEFAULT
             if _error_mode == ErrorModes.HIDE:
                 msg = b'Internal Server Error'
@@ -300,21 +309,14 @@ def wrap_handler(_handler, error_mode: str = None):
             elif _error_mode == ErrorModes.SHORT:
                 msg = str(e).encode()
             elif _error_mode == ErrorModes.LONG:
-                try:
-                    import traceback
-                    msg = traceback.format_exc().encode()
-                except:
-                    msg = str(e).encode()
+                from socketwrench.standardlib_dependencies import format_exception
+                msg = "".join(format_exception(type(e), e, e.__traceback__)).encode()
             response = ErrorResponse(msg, version=request.version)
         return response
 
-
-    wrapper.__name__ = _handler.__name__
-    wrapper.__doc__ = _handler.__doc__
-
     tag(wrapper,
         is_wrapped=True,
-        sig=getattr(parser, "sig", signature(_handler)),
+        sig=getattr(parser, "sig", inspect.signature(_handler)),
         autofill=getattr(parser, "autofill", {}), **_handler.__dict__)
 
     if hasattr(_handler, "match"):
@@ -486,7 +488,7 @@ def is_object_instance(obj):
     if not hasattr(obj, '__class__'):
         return False
     # Get all members of the object's class
-    members = getmembers(obj.__class__, predicate=isfunction)
+    members = inspect.getmembers(obj.__class__, predicate=inspect.isfunction)
 
     # Check if there are any user-defined methods (excluding special methods)
     user_defined_methods = [name for name, f in members if not name.startswith('_')]

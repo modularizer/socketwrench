@@ -1,4 +1,8 @@
-from socketwrench.builtin_imports import Path, empty, signature, getsourcelines
+from socketwrench.standardlib_dependencies import (
+    inspect,
+    Path,
+)
+
 from socketwrench import FileResponse, Response
 from socketwrench.tags import gettag
 
@@ -23,7 +27,7 @@ def openapi_schema(routes_dict):
         autofill = getattr(func, "autofill", {}) or {}
         if "parameters" not in route_info:
             parameters = []
-            sig = getattr(func, "sig", signature(func)) or signature(func)
+            sig = getattr(func, "sig", inspect.signature(func)) or inspect.signature(func)
             for name, param in sig.parameters.items():
                 if name in autofill:
                     continue
@@ -37,11 +41,11 @@ def openapi_schema(routes_dict):
 
             route_info["parameters"] = parameters
         if "responses" not in route_info:
-            sig = getattr(func, "sig", signature(func)) or signature(func)
+            sig = getattr(func, "sig", inspect.signature(func)) or inspect.signature(func)
             return_type = sig.return_annotation
-            if return_type is empty:
+            if return_type is inspect.Parameter.empty:
                 try:
-                    last_line = getsourcelines(func)[0][-1].strip()
+                    last_line = inspect.getsourcelines(func)[0][-1].strip()
                     if "return" not in last_line:
                         return_type = None
                     else:
@@ -78,7 +82,7 @@ def openapi_schema(routes_dict):
                                 return_type = Response
                 except:
                     pass
-            if return_type is not empty:
+            if return_type is not inspect.Parameter.empty:
                 if return_type is None:
                     route_info["responses"] = {
                         "200": {

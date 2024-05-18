@@ -1,8 +1,4 @@
-def partial(func, *args, **keywords):
-    def wrapper(*args2, **keywords2):
-        keywords.update(keywords2)
-        return func(*(list(args) + list(args2)), **keywords)
-    return wrapper
+from socketwrench.standardlib_dependencies import partial
 
 
 def tag(handler=None, **kwargs):

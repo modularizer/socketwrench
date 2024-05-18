@@ -1,4 +1,10 @@
-from socketwrench.builtin_imports import socket, Path, dataclasses, dumps
+from socketwrench.standardlib_dependencies import (
+    dataclasses,
+    datetime,
+    dumps,
+    socket,
+    Path,
+)
 
 
 class HTTPVersion(str):
@@ -78,7 +84,7 @@ class RequestPath(str):
         if "?" not in self:
             return ""
         q = self.split("?", 1)[1]
-        return q
+        return "?" + q
 
     def route(self) -> str:
         """Extracts the path from the path and remove the query."""
@@ -90,6 +96,7 @@ class RequestPath(str):
         q = self.query()
         if not q:
             return {}
+        q = q[1:]
         items = [v.split("=", 1) for v in q.split("&")]
         d = {url_decode(k): url_decode(v) for k, v in items}
         return d
@@ -112,14 +119,14 @@ class ClientAddr(str):
 
 class Request:
     @classmethod
-    def from_components(cls, pre_body_bytes: bytes, body: bytes, client_addr: str, connection_socket: socket = None) -> "Request":
+    def from_components(cls, pre_body_bytes: bytes, body: bytes, client_addr: str, connection_socket: socket = None, origin: str = "") -> "Request":
     # def from_components(cls, pre_body_bytes: bytes, body: bytes, client_addr: str | tuple[str, int], connection_socket: socket.socket = None) -> "Request":
         """Create a Request object from a header string and a body bytes object."""
         i = pre_body_bytes.index(b"\r\n")
         first_line = pre_body_bytes[:i].decode()
         method, path, version = first_line.split(" ")
         header_bytes = pre_body_bytes[i + 2:]
-        return cls(method, path, version, header_bytes, body, client_addr, connection_socket)
+        return cls(method, path, version, header_bytes, body, client_addr, connection_socket, origin=origin)
 
     def __init__(self,
                  method: str = HTTPMethod.GET,
@@ -128,8 +135,20 @@ class Request:
                  header: bytes = HeaderBytes.EMPTY,
                  body: bytes = RequestBody.EMPTY,
                  client_addr: str = None,
-                 connection_socket: socket = None
+                 connection_socket: socket = None,
+                 origin: str = ""
                  ):
+        """Parsed HTML Request bytes broken down into its components.
+
+        Args:
+            method: str | HTTPMethod
+            path: str | RequestPath
+            version: str | HTTPVersion
+            header: bytes | HeaderBytes | Headers | dict[str, str]
+            body: bytes | RequestBody
+            client_addr: str | tuple[str, int] | None
+            connection_socket: socket.socket | None
+        """
         self.method = HTTPMethod(method)
         self.path = RequestPath(path)
         self.version = HTTPVersion(version)
@@ -138,6 +157,7 @@ class Request:
         self.body = RequestBody(body)
         self.client_addr = ClientAddr(client_addr) if client_addr else None
         self.connection_socket = connection_socket
+        self.origin = origin
 
     @property
     def headers(self) -> Headers:
@@ -158,8 +178,16 @@ class Request:
             "client_addr": self.client_addr
         })
 
+    def __str__(self):
+        return f"{self.method} {self.origin}{self.path} from {self.client_addr}"
+
     def __repr__(self):
-        return f"<Request {self.method} {self.path} client_addr={self.client_addr} ...>"
+        ca = f'"{self.client_addr}"' if isinstance(self.client_addr, str) else self.client_addr
+        r = f'<Request("{self.method}","{self.path}", "{self.version}", {bytes(self.header_bytes)}, {bytes(self.data)}, {ca}, {self.connection_socket}, "{self.origin}")>'
+        r = r.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+        if len(r) > 100:
+            r = r[:100] + "..."
+        return r
 
 
 class ResponseBody(Body):
@@ -297,10 +325,14 @@ class Response(metaclass=ResponseType):
                 status_code: int = HTTPStatusCode.OK,
                 headers: dict = HeaderBytes.EMPTY,
                 version: str = HTTPVersion.HTTP_1_1,
+                raw: bool = False,
                 **headers_kwargs):
         # If the body is already a Response instance, return it
         if isinstance(body, Response):
             return body
+
+        if raw:
+            return super(RawResponse, cls).__new__(cls)
 
         # Create an instance of the appropriate subclass based on the body type
         if cls is Response:
@@ -322,6 +354,7 @@ class Response(metaclass=ResponseType):
                  status_code: int = HTTPStatusCode.OK,
                  headers: dict = HeaderBytes.EMPTY,
                  version: str = HTTPVersion.HTTP_1_1,
+                 raw: bool = False,
                  **headers_kwargs
                  ):
         self.status_code = HTTPStatusCode(status_code)
@@ -334,18 +367,55 @@ class Response(metaclass=ResponseType):
                 v = dumps(v)
             self.headers[t] = v
         self.body = ResponseBody(body)
+        self.raw = raw
 
     def pre_body_bytes(self) -> bytes:
         return f'{self.version} {self.status_code}\r\n{self.headers}\r\n'.encode()
 
     def __repr__(self):
-        return f"<Response {self.status_code} {self.body[:10]}>"
+        return f"<{self.__class__.__name__} {self.status_code} {self.body[:80]}>"
 
     def __bytes__(self):
         return self.pre_body_bytes() + self.body
 
     def __buffer__(self, flags):
         return memoryview(bytes(self))
+
+
+class RawResponse(Response):
+    def __init__(self, full_response_bytes: bytes, raw: bool = True, **kwargs):
+        if not raw:
+            raise ValueError("RawResponse must be raw.")
+        self.full_response_bytes = full_response_bytes
+        self.version, self.status_code, self.headers, self.body = self.parse(full_response_bytes)
+        self.raw = raw
+
+    @staticmethod
+    def parse(full_response_bytes: bytes):
+        try:
+            # get the first two lines
+            first_line_end = full_response_bytes.index(b"\r\n")
+            first_line = full_response_bytes[:first_line_end]
+            version, status_code, phrase = first_line.split(b" ", 2)
+            # get the headers
+            header_end = first_line_end + 2 + full_response_bytes[first_line_end + 2:].index(b"\r\n\r\n")
+            header_bytes = full_response_bytes[first_line_end + 2:header_end]
+
+            version = HTTPVersion(version)
+            status_code = HTTPStatusCode(int(status_code), phrase)
+            header_bytes = HeaderBytes(header_bytes)
+            headers = Headers(header_bytes.to_dict())
+            body = ResponseBody(full_response_bytes[header_end + 4:])
+            return version, status_code, headers, body
+        except:
+            return None, None, None, None
+
+    def __bytes__(self):
+        return bytes(self.full_response_bytes)
+
+    def __buffer__(self, flags):
+        return self.full_response_bytes if isinstance(self.full_response_bytes, memoryview) else memoryview(self.full_response_bytes)
+
 
 
 class FileResponse(Response):
@@ -436,7 +506,10 @@ class FileResponse(Response):
                  headers: dict = None,
                  content_type: str = None,
                  download: bool = False,
-                 version: str = "HTTP/1.1"):
+                 version: str = "HTTP/1.1",
+                 raw: bool = False):
+        if raw:
+            raise NotImplementedError
         if content_type is None and self.default_content_type is not None:
             content_type = self.default_content_type
         if content_type is None and extension is not None:
@@ -498,16 +571,10 @@ class FileResponse(Response):
         if "Content-Length" not in headers:
             headers["Content-Length"] = str(path.stat().st_size) if path else str(len(body))
         if "Last-Modified" not in headers:
-            try:
-                import datetime
-                headers["Last-Modified"] = datetime.datetime.fromtimestamp(path.stat().st_mtime).isoformat() if path else datetime.datetime.now().isoformat()
-            except:
-                pass
-
+            headers["Last-Modified"] = datetime.fromtimestamp(path.stat().st_mtime).isoformat() if path else datetime.now().isoformat()
 
         if path and path.is_dir():
-            from tempfile import TemporaryFile
-            from zipfile import ZipFile
+            from socketwrench.standardlib_dependencies import TemporaryFile, ZipFile
             # zip the directory to a TemporaryFile
             with TemporaryFile() as f:
                 with ZipFile(f, "w") as z:
@@ -540,6 +607,10 @@ class FileResponse(Response):
                              headers=headers,
                              content_type=content_type,
                              version=version)
+
+    def __str__(self):
+        ct = self.headers.get("Content-Type", "application/octet-stream")
+        return f"{self.__class__.__name__}[{ct}] {self.status_code} {self.body[:80]}"
 
     def get_content_type(self, suffix: str):
         return self.content_types.get(suffix.lower(), self.content_types[self.default_content_type])
@@ -609,16 +680,16 @@ class FileTypeResponse(metaclass=FileTypeResponseMeta):
 
 
 class HTMLResponse(Response):
-    def __init__(self, html: str, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1"):
+    def __init__(self, html: str, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1", raw: bool = False):
         if headers is None:
             headers = {}
         if "Content-Type" not in headers:
             headers["Content-Type"] = "text/html"
-        Response.__init__(self, html.encode(), status_code, headers, version)
+        Response.__init__(self, html.encode(), status_code, headers, version, raw=raw)
 
 
 class StandardHTMLResponse(HTMLResponse):
-    def __init__(self, body: str, title = "", favicon=None,  scripts: list = None, stylesheets = None, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1"):
+    def __init__(self, body: str, title = "", favicon=None,  scripts: list = None, stylesheets = None, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1", raw: bool = False):
         favicon = f'<link rel="icon" href="{favicon}">' if favicon else ""
         scripts = "\n".join([f'<script src="{i}"></script>' for i in scripts]) if scripts else ""
         stylesheets = "\n".join([f'<link rel="stylesheet" href="{i}">' for i in stylesheets]) if stylesheets else ""
@@ -634,11 +705,11 @@ class StandardHTMLResponse(HTMLResponse):
     {body}
 </body>
 </html>"""
-        super().__init__(html, status_code, headers, version)
+        super().__init__(html, status_code, headers, version, raw=raw)
 
 
 class HTMLTextResponse(StandardHTMLResponse): # this is easier to implement than escaping the text
-    def __init__(self, body: str, title="", favicon=None,  scripts: list = None, stylesheets = None, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1"):
+    def __init__(self, body: str, title="", favicon=None,  scripts: list = None, stylesheets = None, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1", raw: bool = False):
         super().__init__(f"<pre>{body}</pre>",
                             title=title,
                             favicon=favicon,
@@ -646,12 +717,13 @@ class HTMLTextResponse(StandardHTMLResponse): # this is easier to implement than
                             stylesheets=stylesheets,
                             status_code=status_code,
                             headers=headers,
-                            version=version)
+                            version=version,
+                         raw=raw)
 
 
 class TBDBResponse(StandardHTMLResponse):
     """Displays tabular json data in a table using https://github.com/modularizer/teebydeeby"""
-    def __init__(self, data, title="", favicon=None,  scripts: list = None, stylesheets = None, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1"):
+    def __init__(self, data, title="", favicon=None,  scripts: list = None, stylesheets = None, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1", raw: bool = False):
         if not isinstance(data, str):
             data = dumps(data, indent=4)
         super().__init__(f"<teeby-deeby>{data}</teeby-deeby>",
@@ -661,13 +733,13 @@ class TBDBResponse(StandardHTMLResponse):
                             stylesheets=stylesheets,
                             status_code=status_code,
                             headers=headers,
-                            version=version)
-
+                            version=version,
+                         raw=raw)
 
 
 class JSONResponse(Response):
     def __init__(self, data: dict, status_code: int = 200, headers: dict = None,
-                 version: str = "HTTP/1.1"):
+                 version: str = "HTTP/1.1", raw: bool = False):
         if headers is None:
             headers = {}
         if "Content-Type" not in headers:
@@ -699,7 +771,7 @@ class JSONResponse(Response):
                     data = dumps(data)
                 except:
                     data = str(data)
-        super().__init__(data.encode(), status_code, headers, version)
+        super().__init__(data.encode(), status_code, headers, version, raw=raw)
 
 
 class ErrorResponse(Response):
@@ -707,7 +779,7 @@ class ErrorResponse(Response):
                  error: Exception = b'Internal Server Error',
                  status_code: int = 500,
                  headers: dict = None,
-                 version: str = "HTTP/1.1"):
+                 version: str = "HTTP/1.1", raw: bool = False):
         if headers is None:
             headers = {}
         if isinstance(error, Exception):
@@ -718,26 +790,29 @@ class ErrorResponse(Response):
             error = str(error).encode()
         if "Content-Type" not in headers:
             headers["Content-Type"] = "text/plain"
-        super().__init__(error, status_code, headers, version)
+        super().__init__(error, status_code, headers, version, raw=raw)
 
 
 class RedirectResponse(Response):
-    def __init__(self, location: str, status_code: int = 307, headers: dict = None, version: str = "HTTP/1.1"):
+    def __init__(self, location: str, status_code: int = 307, headers: dict = None, version: str = "HTTP/1.1", raw: bool = False):
         if headers is None:
             headers = {}
         if "Location" not in headers:
             headers["Location"] = location
-        super().__init__(b"", status_code, headers, version)
+        super().__init__(b"", status_code, headers, version, raw=raw)
+
+    def __str__(self):
+        return f"{self.__class__.__name__}({self.headers['Location']})"
 
 
 class TemporaryRedirect(RedirectResponse):
-    def __init__(self, location: str, status_code: int = 307, headers: dict = None, version: str = "HTTP/1.1"):
-        super().__init__(location, status_code, headers, version)
+    def __init__(self, location: str, status_code: int = 307, headers: dict = None, version: str = "HTTP/1.1", raw: bool = False):
+        super().__init__(location, status_code, headers, version, raw=raw)
 
 
 class PermanentRedirect(RedirectResponse):
-    def __init__(self, location: str, status_code: int = 308, headers: dict = None, version: str = "HTTP/1.1"):
-        super().__init__(location, status_code, headers, version)
+    def __init__(self, location: str, status_code: int = 308, headers: dict = None, version: str = "HTTP/1.1", raw: bool = False):
+        super().__init__(location, status_code, headers, version, raw=raw)
 
 
 url_encodings = {
