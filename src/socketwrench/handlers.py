@@ -649,71 +649,63 @@ class RouteHandler:
                     r = r[1:]
                 links.append((f"./{r}", route))
         links = sorted(links)
-        print(f"links: {links}")
-        try:
 
-            # sort links into a nested order
-            nested = {}
-            for rel, full in links:
-                parts = full.strip("/").split("/")
-                n = nested
-                for part in parts[:-1]:
-                    if part in n:
-                        if not isinstance(n[part], dict):
-                            print("removing", n[part])
-                            n[part] = {}
-                        n = n[part]
-                    else:
+        # sort links into a nested order
+        nested = {}
+        for rel, full in links:
+            parts = full.strip("/").split("/")
+            n = nested
+            for part in parts[:-1]:
+                if part in n:
+                    if not isinstance(n[part], dict):
                         n[part] = {}
-                        n = n[part]
-                n[parts[-1]] = (rel, full)
-                print(full, nested)
-            print(f"nested: {nested}")
-
-            # now collapse back so if a parent has only one child, the keys are merged
-            def collapse(d, name=""):
-                if not d:
-                    return d, name
-                if len(d) == 1:
-                    k = list(d.keys())[0]
-                    collapsed, new_name = collapse(d[k], name + "/" + k)
-                    return collapsed, name + "/" + new_name
-                collapsed = {}
-                if isinstance(d, tuple):
-                    return d, name
+                    n = n[part]
                 else:
-                    for k, v in d.items():
-                        if isinstance(v, dict):
-                            new_v, new_k = collapse(v, k)
-                            collapsed[new_k] = new_v
-                        else:
-                            collapsed[k] = v
-                return collapsed, name
+                    n[part] = {}
+                    n = n[part]
+            n[parts[-1]] = (rel, full)
 
-            nested, name = collapse(nested)
-            print(f"collapsed: {nested}")
-            def gen_nav(sub):
-                nav = ""
-                for k, v in sub.items():
-                    if isinstance(v, dict):
-                        # make the list item contain a collapsible section
-                        nav += f'<li><details><summary>{k}</summary><ul>{gen_nav(v)}</ul></details></li>'
-
-                        # nav += f'<li>{k}<ul>{gen_nav(v)}</ul></li>'
-                    elif isinstance(v, tuple):
-                        rel, full = v
-                        nav += f'<li><a href="{rel}">{full}</a></li>'
-                return nav
-            nav = gen_nav(nested)
-            if name:
-                nav = f"<h1>{name}</h1>\n<ul>{nav}</ul>"
+        # now collapse back so if a parent has only one child, the keys are merged
+        def collapse(d, name=""):
+            if not d:
+                return d, name
+            if len(d) == 1:
+                k = list(d.keys())[0]
+                collapsed, new_name = collapse(d[k], name + "/" + k)
+                return collapsed, name + "/" + new_name
+            collapsed = {}
+            if isinstance(d, tuple):
+                return d, name
             else:
-                nav = f"<ul>{nav}</ul>"
-            print(f"nav: {nav}")
-        except Exception as e:
-            import traceback
-            nav = f"Error generating navigation: {e}<br/><pre>{str(traceback.format_exc())}"
+                for k, v in d.items():
+                    if isinstance(v, dict):
+                        new_v, new_k = collapse(v, k)
+                        collapsed[new_k] = new_v
+                    else:
+                        collapsed[k] = v
+            return collapsed, name
 
+        nested, name = collapse(nested)
+        def gen_nav(sub, p=""):
+            nav = ""
+            for k, v in sub.items():
+                if isinstance(v, dict):
+                    # make the list item contain a collapsible section
+                    nav += f'<li><details><summary>{p}/{k}</summary><ul>{gen_nav(v, p + "/" + k)}</ul></details></li>'
+
+                    # nav += f'<li>{k}<ul>{gen_nav(v)}</ul></li>'
+                elif isinstance(v, tuple):
+                    rel, full = v
+                    nav += f'<li><a href="{rel}">{full}</a></li>'
+            return nav
+
+        name = name.replace("//", "/")
+        nav = gen_nav(nested, name)
+
+        if name:
+            nav = f"<h1>{name}</h1>\n<ul>{nav}</ul>"
+        else:
+            nav = f"<ul>{nav}</ul>"
 
 
         # nav = "<ul>\n" + "\n\t".join([f'<li><a href="{rel}">{full}</a></li>' if '{' not in full else f'<li>{full}</li>' for rel, full in links]) + "\n</ul>"
