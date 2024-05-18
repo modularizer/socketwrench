@@ -1,3 +1,4 @@
+import inspect
 import logging
 from pathlib import Path
 
@@ -31,6 +32,7 @@ class Sample:
     def unserved(self):
         """This function will not be served."""
         return "this will not be served"
+
 
     @post
     def post(self, name):
@@ -209,7 +211,7 @@ if __name__ == '__main__':
             "a": Another,
             "o": Other
         }
-    })
+    }, spoof_modules="all")
     # OR
     # serve(Sample)
     # OR

@@ -41,6 +41,7 @@ class Connection:
             self.send_response(self.socket, response)
             return request, response, True
         except Exception as e:
+            logger.error(f"Error handling request: {e}")
             self.close()
             raise e
 

@@ -58,8 +58,21 @@ class Logger:
         if level < (self.level or self.root_level):
             return
         name = _levelToName[level]
-        m = msg % args
-        print(f"{name}: {m}")
+        if args:
+            try:
+                msg = msg % args
+            except TypeError:
+                pass
+        colors = {
+            "CRITICAL": "\033[91m",
+            "ERROR": "\033[91m",
+            "WARNING": "\033[93m",
+            "INFO": "\033[94m",
+            "DEBUG": "\033[90m",
+            "NOTSET": "\033[90m",
+        }
+        end = "\033[0m"
+        print(f"{colors[name]}{name}: {msg}{end}")
         
     def setLevel(self, level):
         if isinstance(level, str):

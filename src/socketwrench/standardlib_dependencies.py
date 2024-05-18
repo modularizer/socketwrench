@@ -28,7 +28,6 @@ except ImportError:
         builtins,
         inspect,
         argv,
-        exit,
         ArgumentParser,
         TemporaryFile,
         ZipFile,

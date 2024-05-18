@@ -15,7 +15,7 @@ class Path:
         return self.path
 
     def __truediv__(self, other):
-        return self.path + "/" + other
+        return Path(self.path + "/" + other)
 
     @property
     def parent(self):

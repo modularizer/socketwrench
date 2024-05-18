@@ -3,7 +3,10 @@ class _empty:
 
 
 class Parameter:
+    POSITIONAL_ONLY = 0
+    POSITIONAL_OR_KEYWORD = 1
     VAR_POSITIONAL = 2
+    KEYWORD_ONLY = 3
     VAR_KEYWORD = 4
     empty = _empty
 
@@ -52,7 +55,7 @@ class inspect:
             param = Parameter(name=varname, kind=kind, default=default)
             parameters.append(param)
 
-        return Signature(parameters)
+        return Signature({param.name: param for param in parameters})
 
     @staticmethod
     def getsourcelines(obj):
@@ -60,10 +63,9 @@ class inspect:
 
     @staticmethod
     def isfunction(obj):
-        try:
-            from types import FunctionType
-            return isinstance(object, FunctionType)
-        except ImportError:
-            return callable(obj) and str(type(obj)) in ["<class 'function'>", "<class 'method'>"]
+        return callable(obj) and str(type(obj)) in ["<class 'function'>", "<class 'method'>"]
 
 
+    @staticmethod
+    def getmembers(obj, predicate=None):
+        return [(name, value) for name, value in obj.__dict__.items() if predicate is None or predicate(value)]
