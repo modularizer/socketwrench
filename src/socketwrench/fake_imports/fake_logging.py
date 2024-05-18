@@ -58,12 +58,15 @@ class Logger:
         if level < (self.level or self.root_level):
             print(level, self.level, self.root_level)
             return
-
-        closest_level = (10 * (1 + ((level - 5) // 10))) if level < 50 else 50
-        closest_name = _levelToName[closest_level]
-        diff = level - closest_level
-        diff_str = f"+{diff}" if diff > 0 else str(diff) if diff < 0 else ""
-        name = closest_name + diff_str
+        if level in _levelToName:
+            name = _levelToName[level]
+            closest_name = name
+        else:
+            closest_level = (10 * (1 + ((level - 5) // 10))) if level < 50 else 50
+            closest_name = _levelToName[closest_level]
+            diff = level - closest_level
+            diff_str = f"+{diff}" if diff > 0 else str(diff) if diff < 0 else ""
+            name = closest_name + diff_str
         if args:
             try:
                 msg = msg % args
