@@ -1082,7 +1082,7 @@ class ErrorModes:
     SHORT = "short"
     TRACEBACK = TB = LONG = SHOW = "traceback"
 
-    DEFAULT = HIDE
+    DEFAULT = TRACEBACK
 
 
 def set_default_error_mode(mode: str):

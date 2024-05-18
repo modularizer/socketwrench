@@ -310,8 +310,13 @@ def wrap_handler(_handler, error_mode: str = None):
                 msg = str(e).encode()
             elif _error_mode == ErrorModes.LONG:
                 from socketwrench.standardlib_dependencies import format_exception
-                msg = "".join(format_exception(type(e), e, e.__traceback__)).encode()
-            response = ErrorResponse(msg, version=request.version)
+                tb = format_exception(type(e), e, e.__traceback__)
+                # trim the first part of the traceback which just shows socketwrench internals _handler(*a, **kw)
+                tb = ([tb[0]] if tb else [b"Internal Server Error"]) + tb[2:]
+                msg = "".join(tb)
+                if len(msg.splitlines()) == 2:
+                    msg = msg.splitlines()[1]
+            response = ErrorResponse(msg.encode(), version=request.version)
         return response
 
     tag(wrapper,
@@ -506,7 +511,7 @@ class RouteHandler:
                  fallback_handler=None,
                  base_path: str = "/",
                  require_tag: bool = False,
-                 error_mode: str = ErrorModes.HIDE,
+                 error_mode: str = None,
                  favicon: str = default_favicon,
                  nav_path = "/",
                  nav_recursion = True,
@@ -541,8 +546,9 @@ class RouteHandler:
                     sub = sub.replace("//", "/")
 
                     if isinstance(v, type):
-                        self._add_subroute(sub, RouteHandler(v(), **kw))
+                        self._add_subroute(sub, RouteHandler(v(), base_path=sub, **kw))
                     elif isinstance(v, RouteHandler):
+                        v.base_path = sub
                         self._add_subroute(sub, v)
                     elif isinstance(v, dict):
                         self._add_subroute(sub, RouteHandler(v, base_path=sub, **kw))
@@ -643,7 +649,74 @@ class RouteHandler:
                     r = r[1:]
                 links.append((f"./{r}", route))
         links = sorted(links)
-        nav = "<ul>\n" + "\n\t".join([f'<li><a href="{rel}">{full}</a></li>' if '{' not in full else f'<li>{full}</li>' for rel, full in links]) + "\n</ul>"
+        print(f"links: {links}")
+        try:
+
+            # sort links into a nested order
+            nested = {}
+            for rel, full in links:
+                parts = full.strip("/").split("/")
+                n = nested
+                for part in parts[:-1]:
+                    if part in n:
+                        if not isinstance(n[part], dict):
+                            print("removing", n[part])
+                            n[part] = {}
+                        n = n[part]
+                    else:
+                        n[part] = {}
+                        n = n[part]
+                n[parts[-1]] = (rel, full)
+                print(full, nested)
+            print(f"nested: {nested}")
+
+            # now collapse back so if a parent has only one child, the keys are merged
+            def collapse(d, name=""):
+                if not d:
+                    return d, name
+                if len(d) == 1:
+                    k = list(d.keys())[0]
+                    collapsed, new_name = collapse(d[k], name + "/" + k)
+                    return collapsed, name + "/" + new_name
+                collapsed = {}
+                if isinstance(d, tuple):
+                    return d, name
+                else:
+                    for k, v in d.items():
+                        if isinstance(v, dict):
+                            new_v, new_k = collapse(v, k)
+                            collapsed[new_k] = new_v
+                        else:
+                            collapsed[k] = v
+                return collapsed, name
+
+            nested, name = collapse(nested)
+            print(f"collapsed: {nested}")
+            def gen_nav(sub):
+                nav = ""
+                for k, v in sub.items():
+                    if isinstance(v, dict):
+                        # make the list item contain a collapsible section
+                        nav += f'<li><details><summary>{k}</summary><ul>{gen_nav(v)}</ul></details></li>'
+
+                        # nav += f'<li>{k}<ul>{gen_nav(v)}</ul></li>'
+                    elif isinstance(v, tuple):
+                        rel, full = v
+                        nav += f'<li><a href="{rel}">{full}</a></li>'
+                return nav
+            nav = gen_nav(nested)
+            if name:
+                nav = f"<h1>{name}</h1>\n<ul>{nav}</ul>"
+            else:
+                nav = f"<ul>{nav}</ul>"
+            print(f"nav: {nav}")
+        except Exception as e:
+            import traceback
+            nav = f"Error generating navigation: {e}<br/><pre>{str(traceback.format_exc())}"
+
+
+
+        # nav = "<ul>\n" + "\n\t".join([f'<li><a href="{rel}">{full}</a></li>' if '{' not in full else f'<li>{full}</li>' for rel, full in links]) + "\n</ul>"
         return StandardHTMLResponse(nav, title=self.base_path)
 
     def __call__(self, request: Request) -> Response:
@@ -731,8 +804,6 @@ class RouteHandler:
                             headers={"Content-Type": "text/plain"},
                             version=request.version)
         allowed_methods = gettag(handler, "allowed_methods", None)
-        # if allowed_methods is None:
-        #     print(handler, handler.__dict__)
         if request.method == "HEAD" and "GET" in allowed_methods:
             allowed_methods = list(allowed_methods) + ["HEAD"]
         if allowed_methods is None or request.method not in allowed_methods:
@@ -765,7 +836,7 @@ class RouteHandler:
         if self.base_path == "/" and route.startswith("/"):
             route = route[1:]
 
-        sub = self.base_path + route + ("/" if not route.endswith("/") else "")
+        sub = self.base_path + route
         sub = sub.replace("//", "/")
         if "{" in route and "}" in route:
             self.variadic_routes[sub] = h
@@ -807,6 +878,9 @@ class RouteHandler:
 
     def __getattr__(self, item):
         return self.__class__(self.fallback_handler, self.routes, self.base_path + item + "/")
+
+    def __repr__(self):
+        return f"<RouteHandler {self.base_path}>"
 
 
 if __name__ == "__main__":
