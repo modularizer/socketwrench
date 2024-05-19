@@ -93,10 +93,11 @@ except ImportError:
 try:
     raise_import_error_if_testing('threading')
     from threading import Event, Thread
+    from concurrent.futures import ThreadPoolExecutor
     threading_available = True
 except ImportError:
     threading_available = False
-    Event = Thread = None
+    Event = Thread = ThreadPoolExecutor = None
 
 try:
     raise_import_error_if_testing('traceback')

@@ -5,6 +5,12 @@ Provides a lightweight quickstart to make an API which supports OpenAPI, Swagger
 ## NOTE:
 this is **not** a production-ready web server. It is a learning tool and a lightweight way to make a simple API. While I attempted to reduce overhead in calls, I haven't taken time to thoroughly optimize, and I have not implemented any complex features to deal with security, performance, or scalability.
 
+### defaults to single-threaded, blocking, synchronous, and single-process
+* **(recommended)** Use `thread=True` to enable using multiple worker threads, which will allow for multiple requests to be processed simultaneously.
+* **(optional)** Use `num_connection_threads` to set the number of threads when thread=True. Defaults to None, meaning no limit.
+* **(NOT recommended)** Use `run_in_background=True` to run the entire server's main loop in a thread. Just make sure you have something in the main thread to keep the program running.
+
+
 ## Project Goals
 Part of the goal of this project was to understand how web servers work and to make a simple web server that is easy to use and understand.
 As learning progressed, features were added, but the code became a bit more complex.
