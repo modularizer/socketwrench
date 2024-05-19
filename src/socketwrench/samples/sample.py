@@ -211,7 +211,7 @@ if __name__ == '__main__':
             "a": Another,
             "o": Other
         }
-    })
+    }, thread=True)
     # OR
     # serve(Sample)
     # OR

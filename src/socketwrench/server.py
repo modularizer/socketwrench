@@ -19,7 +19,7 @@ class Server(socket.socket):
     default_host = ''
     default_backlog = 1
     default_chunk_size = Connection.default_chunk_size
-    default_num_connection_threads = 1
+    default_num_connection_threads = None
     default_socket_options = {
         socket.SOL_SOCKET: {
             socket.SO_REUSEADDR: 1
@@ -111,15 +111,10 @@ class Server(socket.socket):
         self.backlog = backlog
         self.chunk_size = chunk_size
         self.num_connection_threads = num_connection_threads
-        if self.num_connection_threads > 1:
-            self.thread_pool_executor = None
-        else:
-            from concurrent.futures import ThreadPoolExecutor
-            self.thread_pool_executor = ThreadPoolExecutor(max_workers=self.num_connection_threads)
         self.pause_sleep = pause_sleep
         self.accept_sleep = accept_sleep
         self.init_socket_options = socket_options
-
+        self.thread_pool_executor = None
         self.server_thread = None
         self.cleanup_event = None
         self.pause_event = None
@@ -151,24 +146,41 @@ class Server(socket.socket):
             for option, value in options.items():
                 self.setsockopt(level, option, value)
 
-    def serve(self, thread: bool = False, cleanup_event = None, pause_event = None, nav_path="/", **kwargs) -> tuple:
+    def serve(self, thread: int = False, run_in_background=False, cleanup_event = None, pause_event = None, nav_path="/", **kwargs) -> tuple:
         if not isinstance(self, Server):
             if isinstance(self, str) or "<module" in str(type(self)):
-                return Server.serve_module(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, nav_path=nav_path, **kwargs)
+                return Server.serve_module(self, thread=thread, run_in_background=run_in_background,
+                                           cleanup_event=cleanup_event, pause_event=pause_event, nav_path=nav_path, **kwargs)
             elif isinstance(self, type):
-                return Server.serve_class(self, thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, nav_path=nav_path,**kwargs)
+                return Server.serve_class(self, thread=thread, run_in_background=run_in_background,
+                                          cleanup_event=cleanup_event, pause_event=pause_event, nav_path=nav_path,**kwargs)
             # allows classmethod-like usage of Server.serve(my_server_instance)
-            return Server(self, nav_path=nav_path, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
-        if thread and threading_available:
-            from socketwrench.standardlib_dependencies import Event, Thread
+            return Server(self, nav_path=nav_path, serve=False, **kwargs).serve(thread=thread, run_in_background=run_in_background,
+                            cleanup_event=cleanup_event, pause_event=pause_event)
+        if thread:
+            if threading_available:
+                from socketwrench.standardlib_dependencies import ThreadPoolExecutor
+                from concurrent.futures import ThreadPoolExecutor
+                self.thread_pool_executor = ThreadPoolExecutor(max_workers=self.num_connection_threads)
+                logger.info(f"Using ThreadPoolExecutor with max_workers={self.num_connection_threads}.")
+            else:
+                raise RuntimeError("Threading is not available on this platform.")
 
-            self.cleanup_event = Event()
-            self.pause_event = Event()
+        if run_in_background:
+            if threading_available:
+                from socketwrench.standardlib_dependencies import Event, Thread
 
-            t = Thread(target=self.serve, args=(False, self.cleanup_event, self.pause_event), daemon=True)
-            t.start()
-            self.server_thread = t
-            return t, self.cleanup_event, self.pause_event
+                self.cleanup_event = Event()
+                self.pause_event = Event()
+
+                logger.info("Starting server in background thread. Make sure to keep the main thread alive.")
+                t = Thread(target=self.serve, args=(False, self.cleanup_event, self.pause_event), daemon=True)
+                t.start()
+                self.server_thread = t
+                return t, self.cleanup_event, self.pause_event
+            else:
+                raise RuntimeError("Threading is not available on this platform.")
+
 
         self.bind((self.host, self.port))
         self.listen(self.backlog)
@@ -194,6 +206,11 @@ class Server(socket.socket):
     def accept_connection(self) -> Connection:
         """Accepts a connection and returns a Connection object."""
         client_connection, client_address = self.accept()
+        connection = self.make_connection(client_connection, client_address)
+        return connection
+
+    def make_connection(self, client_connection, client_address) -> Connection:
+        """Makes a connection and returns a Connection object."""
         connection = Connection(self.handler, client_connection, client_address,
                                 cleanup_event=self.cleanup_event,
                                 chunk_size=self.chunk_size,
@@ -235,7 +252,7 @@ class Server(socket.socket):
     @classmethod
     def serve_class(cls, c, thread: bool = False, cleanup_event = None, pause_event = None, **kwargs):
         inst = c()
-        return cls(inst, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
+        return cls(inst, serve=False, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
 
     @classmethod
     def serve_module(cls, module, thread: bool = False, cleanup_event = None, pause_event = None, **kwargs):

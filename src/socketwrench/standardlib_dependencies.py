@@ -23,6 +23,7 @@ try:
     import logging
     from time import sleep
     from threading import Event, Thread
+    from concurrent.futures import ThreadPoolExecutor
     threading_available = True
     from traceback import format_exception
     import importlib
@@ -46,6 +47,7 @@ except ImportError:
         sleep,
         Event,
         Thread,
+        ThreadPoolExecutor,
         threading_available,
         format_exception,
         importlib,
