@@ -250,12 +250,12 @@ class Server(socket.socket):
 
 
     @classmethod
-    def serve_class(cls, c, thread: bool = False, cleanup_event = None, pause_event = None, **kwargs):
+    def serve_class(cls, c, thread: bool = False, cleanup_event = None, pause_event = None, run_in_background=False, **kwargs):
         inst = c()
-        return cls(inst, serve=False, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
+        return cls(inst, serve=False, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, run_in_background=run_in_background)
 
     @classmethod
-    def serve_module(cls, module, thread: bool = False, cleanup_event = None, pause_event = None, **kwargs):
+    def serve_module(cls, module, thread: bool = False, cleanup_event = None, pause_event = None, run_in_background=False, **kwargs):
         if isinstance(module, Path):
             from socketwrench.standardlib_dependencies import importlib, modules
             module = importlib.util.spec_from_file_location("module", module)
@@ -272,5 +272,5 @@ class Server(socket.socket):
                 parts = module.split(".")
                 module = importlib.import_module(".".join(parts[:-1]))
                 module = getattr(module, parts[-1])
-        return cls(module, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event)
+        return cls(module, **kwargs).serve(thread=thread, cleanup_event=cleanup_event, pause_event=pause_event, run_in_background=run_in_background)
 
