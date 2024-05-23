@@ -83,54 +83,66 @@ def openapi_schema(routes_dict):
                 except:
                     pass
             if return_type is not inspect.Parameter.empty:
-                if return_type is None:
-                    route_info["responses"] = {
-                        "200": {
-                            "description": "Success",
-                            "content": {
-                                "application/json": {
-                                    "schema": {"type": "object"}
+                try:
+                    if return_type is None:
+                        route_info["responses"] = {
+                            "200": {
+                                "description": "Success",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {"type": "object"}
+                                    }
                                 }
                             }
                         }
-                    }
-                elif return_type is Path or issubclass(return_type, Path) or return_type is FileResponse or issubclass(return_type, FileResponse):
-                    content_type = getattr(return_type, "default_content_type", "application/octet-stream")
-                    route_info["responses"] = {
-                        "200": {
-                            "description": "File response",
-                            "content": {
-                                content_type: {
-                                    "schema": {"type": "string", "format": "binary"}
+                    elif return_type is Path or issubclass(return_type, Path) or return_type is FileResponse or issubclass(return_type, FileResponse):
+                        content_type = getattr(return_type, "default_content_type", "application/octet-stream")
+                        route_info["responses"] = {
+                            "200": {
+                                "description": "File response",
+                                "content": {
+                                    content_type: {
+                                        "schema": {"type": "string", "format": "binary"}
+                                    }
                                 }
                             }
                         }
-                    }
-                elif return_type is str or issubclass(return_type, str):
-                    route_info["responses"] = {
-                        "200": {
-                            "description": "Success",
-                            "content": {
-                                "text/html": {
-                                    "schema": {"type": "string"}
+                    elif return_type is str or issubclass(return_type, str):
+                        route_info["responses"] = {
+                            "200": {
+                                "description": "Success",
+                                "content": {
+                                    "text/html": {
+                                        "schema": {"type": "string"}
+                                    }
                                 }
                             }
                         }
-                    }
-                elif return_type is bytes or issubclass(return_type, bytes) or return_type is memoryview or issubclass(return_type, memoryview) \
-                    or return_type is bytearray or issubclass(return_type, bytearray) or return_type is Response or issubclass(return_type, Response):
-                    content_type = getattr(return_type, "default_content_type", "application/octet-stream")
-                    route_info["responses"] = {
-                        "200": {
-                            "description": "Success",
-                            "content": {
-                                content_type: {
-                                    "schema": {"type": "string", "format": "binary"}
+                    elif return_type is bytes or issubclass(return_type, bytes) or return_type is memoryview or issubclass(return_type, memoryview) \
+                        or return_type is bytearray or issubclass(return_type, bytearray) or return_type is Response or issubclass(return_type, Response):
+                        content_type = getattr(return_type, "default_content_type", "application/octet-stream")
+                        route_info["responses"] = {
+                            "200": {
+                                "description": "Success",
+                                "content": {
+                                    content_type: {
+                                        "schema": {"type": "string", "format": "binary"}
+                                    }
                                 }
                             }
                         }
-                    }
-                else:
+                    else:
+                        route_info["responses"] = {
+                            "200": {
+                                "description": "Success",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {"type": "object"}
+                                    }
+                                }
+                            }
+                        }
+                except:
                     route_info["responses"] = {
                         "200": {
                             "description": "Success",
