@@ -97,7 +97,7 @@ class RequestPath(str):
         if not q:
             return {}
         q = q[1:]
-        items = [v.split("=", 1) for v in q.split("&")]
+        items = [v.split("=", 1) if '=' in v else (v, "") for v in q.split("&")]
         d = {url_decode(k): url_decode(v) for k, v in items}
         return d
 
