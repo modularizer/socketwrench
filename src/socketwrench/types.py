@@ -301,6 +301,7 @@ class HTTPStatusCode(int):
         return f'{int(self)} {self.phrase()}'
 
 
+status_code_names = {v: k for k, v in HTTPStatusCode.__dict__.items() if (not k.startswith("_")) and isinstance(v, int)}
 for k, v in HTTPStatusCode.__dict__.items():
     if isinstance(v, int):
         setattr(HTTPStatusCode, k, HTTPStatusCode(v, k.replace("_", " ")))
@@ -318,11 +319,29 @@ class ResponseType(type):
         return TypedResponse
 
 
-class Response(metaclass=ResponseType):
+class Response(Exception, metaclass=ResponseType):
     default_content_type = None
+    default_status_code = HTTPStatusCode.OK
+
+    @classmethod
+    def from_status_code(cls, status_code: int):
+        class StatusCodeResponse(cls):
+            default_status_code = status_code
+
+            def __init__(self,
+                 body: bytes = ResponseBody.EMPTY,
+                 *args,
+                 **kwargs
+                 ):
+                if isinstance(body, str):
+                    body = body.encode()
+                super().__init__(body, *args, **kwargs)
+
+        StatusCodeResponse.__name__ = status_code_names.get(status_code, str(status_code))
+        return StatusCodeResponse
 
     def __new__(cls, body: bytes = ResponseBody.EMPTY,
-                status_code: int = HTTPStatusCode.OK,
+                status_code: int = None,
                 headers: dict = HeaderBytes.EMPTY,
                 version: str = HTTPVersion.HTTP_1_1,
                 raw: bool = False,
@@ -357,6 +376,8 @@ class Response(metaclass=ResponseType):
                  raw: bool = False,
                  **headers_kwargs
                  ):
+        if status_code is None:
+            status_code = self.default_status_code
         self.status_code = HTTPStatusCode(status_code)
         self.version = HTTPVersion(version)
         self.header_bytes = HeaderBytes(headers)
@@ -368,9 +389,13 @@ class Response(metaclass=ResponseType):
             self.headers[t] = v
         self.body = ResponseBody(body)
         self.raw = raw
+        super().__init__(self.body, self.status_code, self.headers, self.version)
 
     def pre_body_bytes(self) -> bytes:
         return f'{self.version} {self.status_code}\r\n{self.headers}\r\n'.encode()
+
+    def __str__(self):
+        return repr(self)
 
     def __repr__(self):
         return f"<{self.__class__.__name__} {self.status_code} {self.body[:80]}>"
@@ -417,8 +442,161 @@ class RawResponse(Response):
         return self.full_response_bytes if isinstance(self.full_response_bytes, memoryview) else memoryview(self.full_response_bytes)
 
 
+class InformationalResponse(Response):
+    default_status_code = 100
 
-class FileResponse(Response):
+    def __subclasshook__(cls, __subclass):
+        return super().__subclasshook__(__subclass) or (
+                    cls is InformationalResponse and 100 <= __subclass.default_status_code <= 199)
+
+class SuccessResponse(Response):
+    default_status_code = 200
+
+    def __subclasshook__(cls, __subclass):
+        return super().__subclasshook__(__subclass) or (
+                    cls is SuccessResponse and 200 <= __subclass.default_status_code <= 299)
+
+
+class RedirectionResponse(Response):
+    default_status_code = 300
+
+    def __subclasshook__(cls, __subclass):
+        return super().__subclasshook__(__subclass) or (cls is RedirectionResponse and 300 <= __subclass.default_status_code <= 399)
+
+
+class ClientError(Response):
+    default_status_code = 400
+
+    def __subclasshook__(cls, __subclass):
+        return super().__subclasshook__(__subclass) or (
+                    cls is ClientError and 400 <= __subclass.default_status_code <= 499)
+
+
+class BadRequest(ClientError):
+    pass
+
+
+class ServerError(Response):
+    default_status_code = 500
+
+    def __subclasshook__(cls, __subclass):
+        return super().__subclasshook__(__subclass) or (cls is ServerError and 500 <= __subclass.default_status_code <= 599)
+
+
+class InternalServerError(ServerError):
+    pass
+
+
+class HTTPStatusCodeResponses:
+    # Informational Responses
+    CONTINUE = InformationalResponse.from_status_code(HTTPStatusCode.CONTINUE)
+    SWITCHING_PROTOCOLS = InformationalResponse.from_status_code(HTTPStatusCode.SWITCHING_PROTOCOLS)
+    PROCESSING = InformationalResponse.from_status_code(HTTPStatusCode.PROCESSING)
+    EARLY_HINTS = InformationalResponse.from_status_code(HTTPStatusCode.EARLY_HINTS)
+
+    # Successful Responses
+    OK = SuccessResponse.from_status_code(HTTPStatusCode.OK)
+    CREATED = SuccessResponse.from_status_code(HTTPStatusCode.CREATED)
+    ACCEPTED = SuccessResponse.from_status_code(HTTPStatusCode.ACCEPTED)
+    NON_AUTHORITATIVE_INFORMATION = SuccessResponse.from_status_code(HTTPStatusCode.NON_AUTHORITATIVE_INFORMATION)
+    NO_CONTENT = SuccessResponse.from_status_code(HTTPStatusCode.NO_CONTENT)
+    RESET_CONTENT = SuccessResponse.from_status_code(HTTPStatusCode.RESET_CONTENT)
+    PARTIAL_CONTENT = SuccessResponse.from_status_code(HTTPStatusCode.PARTIAL_CONTENT)
+    MULTI_STATUS = SuccessResponse.from_status_code(HTTPStatusCode.MULTI_STATUS)
+    ALREADY_REPORTED = SuccessResponse.from_status_code(HTTPStatusCode.ALREADY_REPORTED)
+    IM_USED = SuccessResponse.from_status_code(HTTPStatusCode.IM_USED)
+
+    # Redirection Messages
+    MULTIPLE_CHOICES = RedirectionResponse.from_status_code(HTTPStatusCode.MULTIPLE_CHOICES)
+    MOVED_PERMANENTLY = RedirectionResponse.from_status_code(HTTPStatusCode.MOVED_PERMANENTLY)
+    FOUND = RedirectionResponse.from_status_code(HTTPStatusCode.FOUND)
+    SEE_OTHER = RedirectionResponse.from_status_code(HTTPStatusCode.SEE_OTHER)
+    NOT_MODIFIED = RedirectionResponse.from_status_code(HTTPStatusCode.NOT_MODIFIED)
+    USE_PROXY = RedirectionResponse.from_status_code(HTTPStatusCode.USE_PROXY)
+    TEMPORARY_REDIRECT = RedirectionResponse.from_status_code(HTTPStatusCode.TEMPORARY_REDIRECT)
+    PERMANENT_REDIRECT = RedirectionResponse.from_status_code(HTTPStatusCode.PERMANENT_REDIRECT)
+
+    # Client Error Responses
+    BAD_REQUEST = BadRequest
+    UNAUTHORIZED = ClientError.from_status_code(HTTPStatusCode.UNAUTHORIZED)
+    PAYMENT_REQUIRED = ClientError.from_status_code(HTTPStatusCode.PAYMENT_REQUIRED)
+    FORBIDDEN = ClientError.from_status_code(HTTPStatusCode.FORBIDDEN)
+    NOT_FOUND = ClientError.from_status_code(HTTPStatusCode.NOT_FOUND)
+    METHOD_NOT_ALLOWED = ClientError.from_status_code(HTTPStatusCode.METHOD_NOT_ALLOWED)
+    NOT_ACCEPTABLE = ClientError.from_status_code(HTTPStatusCode.NOT_ACCEPTABLE)
+    PROXY_AUTHENTICATION_REQUIRED = ClientError.from_status_code(HTTPStatusCode.PROXY_AUTHENTICATION_REQUIRED)
+    REQUEST_TIMEOUT = ClientError.from_status_code(HTTPStatusCode.REQUEST_TIMEOUT)
+    CONFLICT = ClientError.from_status_code(HTTPStatusCode.CONFLICT)
+    GONE = ClientError.from_status_code(HTTPStatusCode.GONE)
+    LENGTH_REQUIRED = ClientError.from_status_code(HTTPStatusCode.LENGTH_REQUIRED)
+    PRECONDITION_FAILED = ClientError.from_status_code(HTTPStatusCode.PRECONDITION_FAILED)
+    PAYLOAD_TOO_LARGE = ClientError.from_status_code(HTTPStatusCode.PAYLOAD_TOO_LARGE)
+    URI_TOO_LONG = ClientError.from_status_code(HTTPStatusCode.URI_TOO_LONG)
+    UNSUPPORTED_MEDIA_TYPE = ClientError.from_status_code(HTTPStatusCode.UNSUPPORTED_MEDIA_TYPE)
+    RANGE_NOT_SATISFIABLE = ClientError.from_status_code(HTTPStatusCode.RANGE_NOT_SATISFIABLE)
+    EXPECTATION_FAILED = ClientError.from_status_code(HTTPStatusCode.EXPECTATION_FAILED)
+    IM_A_TEAPOT = ClientError.from_status_code(HTTPStatusCode.IM_A_TEAPOT)
+    MISDIRECTED_REQUEST = ClientError.from_status_code(HTTPStatusCode.MISDIRECTED_REQUEST)
+    UNPROCESSABLE_ENTITY = ClientError.from_status_code(HTTPStatusCode.UNPROCESSABLE_ENTITY)
+    LOCKED = ClientError.from_status_code(HTTPStatusCode.LOCKED)
+    FAILED_DEPENDENCY = ClientError.from_status_code(HTTPStatusCode.FAILED_DEPENDENCY)
+    TOO_EARLY = ClientError.from_status_code(HTTPStatusCode.TOO_EARLY)
+    UPGRADE_REQUIRED = ClientError.from_status_code(HTTPStatusCode.UPGRADE_REQUIRED)
+    PRECONDITION_REQUIRED = ClientError.from_status_code(HTTPStatusCode.PRECONDITION_REQUIRED)
+    TOO_MANY_REQUESTS = ClientError.from_status_code(HTTPStatusCode.TOO_MANY_REQUESTS)
+    REQUEST_HEADER_FIELDS_TOO_LARGE = ClientError.from_status_code(HTTPStatusCode.REQUEST_HEADER_FIELDS_TOO_LARGE)
+    UNAVAILABLE_FOR_LEGAL_REASONS = ClientError.from_status_code(HTTPStatusCode.UNAVAILABLE_FOR_LEGAL_REASONS)
+
+    # Server Error Responses
+    INTERNAL_SERVER_ERROR = InternalServerError
+    NOT_IMPLEMENTED = ServerError.from_status_code(HTTPStatusCode.NOT_IMPLEMENTED)
+    BAD_GATEWAY = ServerError.from_status_code(HTTPStatusCode.BAD_GATEWAY)
+    SERVICE_UNAVAILABLE = ServerError.from_status_code(HTTPStatusCode.SERVICE_UNAVAILABLE)
+    GATEWAY_TIMEOUT = ServerError.from_status_code(HTTPStatusCode.GATEWAY_TIMEOUT)
+    HTTP_VERSION_NOT_SUPPORTED = ServerError.from_status_code(HTTPStatusCode.HTTP_VERSION_NOT_SUPPORTED)
+    VARIANT_ALSO_NEGOTIATES = ServerError.from_status_code(HTTPStatusCode.VARIANT_ALSO_NEGOTIATES)
+    INSUFFICIENT_STORAGE = ServerError.from_status_code(HTTPStatusCode.INSUFFICIENT_STORAGE)
+    LOOP_DETECTED = ServerError.from_status_code(HTTPStatusCode.LOOP_DETECTED)
+    NOT_EXTENDED = ServerError.from_status_code(HTTPStatusCode.NOT_EXTENDED)
+    NETWORK_AUTHENTICATION_REQUIRED = ServerError.from_status_code(HTTPStatusCode.NETWORK_AUTHENTICATION_REQUIRED)
+
+
+class RawResponse(Response):
+    def __init__(self, full_response_bytes: bytes, raw: bool = True, **kwargs):
+        if not raw:
+            raise ValueError("RawResponse must be raw.")
+        self.full_response_bytes = full_response_bytes
+        self.version, self.status_code, self.headers, self.body = self.parse(full_response_bytes)
+        self.raw = raw
+
+    @staticmethod
+    def parse(full_response_bytes: bytes):
+        try:
+            # get the first two lines
+            first_line_end = full_response_bytes.index(b"\r\n")
+            first_line = full_response_bytes[:first_line_end]
+            version, status_code, phrase = first_line.split(b" ", 2)
+            # get the headers
+            header_end = first_line_end + 2 + full_response_bytes[first_line_end + 2:].index(b"\r\n\r\n")
+            header_bytes = full_response_bytes[first_line_end + 2:header_end]
+
+            version = HTTPVersion(version)
+            status_code = HTTPStatusCode(int(status_code), phrase)
+            header_bytes = HeaderBytes(header_bytes)
+            headers = Headers(header_bytes.to_dict())
+            body = ResponseBody(full_response_bytes[header_end + 4:])
+            return version, status_code, headers, body
+        except:
+            return None, None, None, None
+
+    def __bytes__(self):
+        return bytes(self.full_response_bytes)
+
+    def __buffer__(self, flags):
+        return self.full_response_bytes if isinstance(self.full_response_bytes, memoryview) else memoryview(self.full_response_bytes)
+
+
+class FileResponse(SuccessResponse):
     content_types = {
         "html": "text/html",
         "css": "text/css",
@@ -679,7 +857,7 @@ class FileTypeResponse(metaclass=FileTypeResponseMeta):
         return FileTypeResponseMeta.get_class(*args, **kwargs)
 
 
-class HTMLResponse(Response):
+class HTMLResponse(SuccessResponse):
     def __init__(self, html: str, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1", raw: bool = False):
         if headers is None:
             headers = {}
@@ -736,9 +914,8 @@ class TBDBResponse(StandardHTMLResponse):
                             version=version,
                          raw=raw)
 
-
-class JSONResponse(Response):
-    def __init__(self, data: dict, status_code: int = 200, headers: dict = None,
+class JSONResponse(SuccessResponse):
+    def __init__(self, data: str | dict | list | tuple | int | float, status_code: int = 200, headers: dict = None,
                  version: str = "HTTP/1.1", raw: bool = False):
         if headers is None:
             headers = {}
@@ -771,7 +948,7 @@ class JSONResponse(Response):
         super().__init__(data.encode(), status_code, headers, version, raw=raw)
 
 
-class ErrorResponse(Response):
+class ErrorResponse(ServerError):
     def __init__(self,
                  error: Exception = b'Internal Server Error',
                  status_code: int = 500,
@@ -790,7 +967,7 @@ class ErrorResponse(Response):
         super().__init__(error, status_code, headers, version, raw=raw)
 
 
-class RedirectResponse(Response):
+class RedirectResponse(RedirectionResponse):
     def __init__(self, location: str, status_code: int = 307, headers: dict = None, version: str = "HTTP/1.1", raw: bool = False):
         if headers is None:
             headers = {}

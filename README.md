@@ -166,6 +166,7 @@ if __name__ == '__main__':
 * [x] Serve static folders
 * [x] Make a better playground for testing endpoints
   * [ ] better preview of variadic routes
+* [x] Make Response subclass Exception so it can be simply be `raise`d from anywhere in the stack
 * [ ] improve docs
   * [ ] document variadic routes
   * [ ] document autofilled parameters

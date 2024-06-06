@@ -10,7 +10,8 @@ from socketwrench.standardlib_dependencies import (
 
 from socketwrench.tags import tag, get, gettag
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
-    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, url_decode, StandardHTMLResponse
+    HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, HTMLResponse, url_decode, StandardHTMLResponse, \
+    status_code_names
 
 logger = logging.getLogger("socketwrench")
 
@@ -95,7 +96,7 @@ def cast_to_typehint(value: str, typehint = inspect.Parameter.empty):
         if value.isdigit() or (value.startswith("-") and value[1:].isdigit())  and not '.' in value:
             return int(value)
     if _typehint_matches(typehint, [float, inspect.Parameter.empty]):
-        if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
+        if value.count(".") <= 1 and value.replace(".", "").isdigit() or (value.startswith("-") and value[1:].replace(".", "").isdigit()):
             return float(value)
     if _typehint_matches(typehint, [bool, inspect.Parameter.empty]):
         if value.lower() in ["false", "f", "no", "n"]:
@@ -299,6 +300,8 @@ def wrap_handler(_handler, error_mode: str = None):
                             response = Response(r, version=request.version)
                     except:
                         response = Response(r, version=request.version)
+        except Response as r:
+            response = r if r.args and r.args[0] else type(r)(status_code_names.get(r.default_status_code, '').encode())
         except Exception as e:
             logger.exception(e)
             _error_mode = error_mode if error_mode is not None else ErrorModes.DEFAULT
@@ -316,7 +319,22 @@ def wrap_handler(_handler, error_mode: str = None):
                 msg = "".join(tb)
                 if len(msg.splitlines()) == 2:
                     msg = msg.splitlines()[1]
-            response = ErrorResponse(msg.encode(), version=request.version)
+
+            status_codes = {
+                PermissionError: 403,  # Forbidden
+                FileNotFoundError: 404,  # Not Found
+                NotImplementedError: 501,  # Not Implemented
+                ConnectionError: 502,  # Bad Gateway
+                TimeoutError: 504,  # Gateway Timeout
+                RecursionError: 508,  # Loop Detected
+                MemoryError: 507,  # Insufficient Storage
+                OSError: 500,  # Internal Server Error (general OS-related error)
+            }
+            status_code = 500
+            for t, c in status_codes.items():
+                if isinstance(e, t):
+                    status_code = c
+            response = ErrorResponse(msg.encode(), version=request.version, status_code=status_code)
         return response
 
     tag(wrapper,

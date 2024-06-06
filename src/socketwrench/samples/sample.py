@@ -7,7 +7,7 @@ import numpy as np
 
 from socketwrench.handlers import StaticFileHandler
 from socketwrench.tags import private, post, put, patch, delete, route, methods, get
-from socketwrench.types import TBDBResponse, FileTypeResponse
+from socketwrench.types import TBDBResponse, FileTypeResponse, HTTPStatusCodeResponses
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -200,9 +200,27 @@ class Another:
     def hello(self):
         return "world"
 
+    @get("/testing/{a}")
+    def testing_exception(self, a):
+        x = int(a)
+        if x < 5:
+            raise HTMLResponse("Got less than 5")
+        elif x < 10:
+            raise JSONResponse({"x": x})
+        elif x < 15:
+            return "less than 15"
+        elif x < 20:
+            return self.testing_exception(a) # force a recursion error
+        elif x < 25:
+            raise FileNotFoundError("not found")
+        elif x < 30:
+            raise HTTPStatusCodeResponses.IM_A_TEAPOT
+        elif x < 35:
+            raise HTTPStatusCodeResponses.IM_A_TEAPOT('Im a teapot')
 
 if __name__ == '__main__':
-    from socketwrench import serve
+    from socketwrench import serve, HTMLResponse, JSONResponse
+
     s = Sample()
     serve({
         "sample": s,
