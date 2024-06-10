@@ -184,6 +184,7 @@ class Server(socket.socket):
 
         self.bind((self.host, self.port))
         self.listen(self.backlog)
+        self.settimeout(1) # timeout for accept, allows Keyboard Interrupt to shutdown the server
         logger.info("Serving HTTP on port " + str(self.port) + "...")
         logger.info(f"Press Ctrl+C to stop the server.")
         logger.info(f"Go to {self.origin}/swagger to see documentation.")
@@ -195,13 +196,16 @@ class Server(socket.socket):
                     sleep(self.pause_sleep)
             if self.accept_sleep:
                 sleep(self.accept_sleep)
-            connection = self.accept_connection()
+            try:
+                connection = self.accept_connection()
 
-            # handle connection
-            if self.thread_pool_executor:
-                self.thread_pool_executor.submit(connection.handle)
-            else:
-                connection.handle()
+                # handle connection
+                if self.thread_pool_executor:
+                    self.thread_pool_executor.submit(connection.handle)
+                else:
+                    connection.handle()
+            except socket.timeout:
+                pass
 
     def accept_connection(self) -> Connection:
         """Accepts a connection and returns a Connection object."""
