@@ -473,6 +473,7 @@ class StaticFileHandler(MatchableHandlerABC):
 
 
 class UploadFolder(StaticFileHandler):
+    # TODO: add a very basic HTML landing page with upload button and drag and drop functionality
     def __init__(self, path="uploads", route: str = None, allow_uploads=True, overwrite=False, allow_downloads=False):
         super().__init__(path, route=route, allow_uploads=allow_uploads, overwrite=overwrite, allow_downloads=allow_downloads)
 
