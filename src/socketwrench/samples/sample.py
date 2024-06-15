@@ -5,9 +5,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from socketwrench.handlers import StaticFileHandler
+from socketwrench.handlers import StaticFileHandler, UploadFolder
 from socketwrench.tags import private, post, put, patch, delete, route, methods, get
-from socketwrench.types import TBDBResponse, FileTypeResponse, HTTPStatusCodeResponses
+from socketwrench.types import TBDBResponse, FileTypeResponse, HTTPStatusCodeResponses, Request, FileUpload, FormData
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -170,7 +170,6 @@ class Sample:
 
 
 
-
 class Other:
     def hello(self):
         return "world"
@@ -218,11 +217,30 @@ class Another:
         elif x < 35:
             raise HTTPStatusCodeResponses.IM_A_TEAPOT('Im a teapot')
 
+
+class Files:
+    @post
+    def upload(self, file: FileUpload, filename, filetype, extra: str, fd: FormData, request: Request = None):
+        print(f"file: {file}")
+        print(f"file.name: {file.name}")
+        print(f"filename: {filename}")
+        print(f"filetype: {filetype}")
+        print(f"extra: {extra}")
+        print(f"request: {request}")
+        print(f"request.files: {request.files}")
+        print(f"fd: {fd}")
+        file.save()
+        return file
+
+
 if __name__ == '__main__':
     from socketwrench import serve, HTMLResponse, JSONResponse
 
     s = Sample()
     serve({
+        "u": UploadFolder(overwrite=True),
+        "u2": UploadFolder("uploads2"),
+        "files": Files(),
         "sample": s,
         "a": Another(),
         "nest": {

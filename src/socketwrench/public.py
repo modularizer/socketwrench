@@ -1,5 +1,5 @@
 from .server import Server
-from .handlers import RouteHandler, StaticFileHandler, MatchableHandlerABC
+from .handlers import RouteHandler, StaticFileHandler, MatchableHandlerABC, UploadFolder, Workspace
 from .types import (
     Request,
     Response,
@@ -19,6 +19,15 @@ from .types import (
     FullPath,
     Method,
     File,
+    Upload,
+    FileUpload,
+    Files,
+    Uploads,
+    FileUploads,
+    FormData,
+    FileName,
+    FileType,
+    ContentType,
     ClientAddr,
     Headers,
     set_default_error_mode,
@@ -34,5 +43,6 @@ from .tags import (
     patch,
     delete
 )
+from .settings import disable_autofill
 
 serve = Server.serve

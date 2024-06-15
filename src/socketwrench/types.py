@@ -28,11 +28,423 @@ class HTTPMethod(str):
     TRACE = "TRACE"
     PATCH = "PATCH"
 
+
+class FileUploads(list):
+    def __getattr__(self, item):
+        for file in self:
+            if item == file.name:
+                return file
+        return super().__getattr__(item)
+
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return super().__getitem__(item)
+        for file in self:
+            if item == file.name:
+                return file
+        return super().__getitem__(item)
+
+    def to_dict(self):
+        return {file.name: file for file in self}
+
+
 class Body(bytes):
     EMPTY = b""
 
+    @property
+    def files(self) -> FileUploads:
+        return FileUploads()
+
+
 class RequestBody(Body):
+    def __new__(cls, data: bytes):
+        return super().__new__(cls, data)
+
+
+class FormBody(RequestBody):
+    def __init__(self, data: bytes, boundary: bytes = b""):
+        if not boundary:
+            if not data.startswith(b"--"):
+                raise InvalidFormError(b"data does not start with --")
+            boundary = data.split(b"\r\n", 1)[0]
+        if not data.startswith(boundary):
+            raise InvalidFormError(f"data does not start with boundary ({boundary})".encode())
+        parts = data.split(boundary)
+        form_data = {}
+        i = 0
+        for part in parts[1:-1]:
+            i += len(boundary)
+            data_start=i
+            i += len(part)
+            if not part.strip(b'\r\n').strip(b'\n'):
+                continue
+            section = FormSection(data[data_start:i-2]) # -2 to remove the trailing \r\n
+            form_data[section.name] = section
+        self.boundary = boundary
+        self.form_data: dict[str, FormSection] = FormData(form_data)
+
+    @property
+    def files(self) -> FileUploads:
+        return FileUploads([v for v in self.form_data.values() if v.is_file])
+
+
+class FormSection(bytes):
+    def __new__(cls, data: bytes):
+        if not b'\r\n\r\n' in data:
+            print(data)
+            raise InvalidFormError(b"Could not find form section headers")
+        headers, body = data.split(b"\r\n\r\n", 1)
+        hd = HeaderBytes(headers).to_dict()
+        if "Content-Disposition" not in hd or not (cd := hd["Content-Disposition"]).startswith("form-data"):
+            raise InvalidFormError(b"Cound not find 'Content-Disposition: form-data' in form section")
+        if "filename" in cd:
+            x = super().__new__(FileUpload, body)
+        else:
+            x = super().__new__(cls, body)
+        x._set_headers(headers)
+        return x
+
+    def _set_headers(self, headers: bytes):
+        self.section_header_bytes = HeaderBytes(headers)
+        self.section_headers = self.section_header_bytes.to_dict()
+        cd = self.section_headers["Content-Disposition"]
+        cd_info_parts = [k.split('=', 1) for k in cd.split(";", 1)[1].split(";") if '=' in k]
+        info = {k.strip(): v.strip() for k, v in cd_info_parts}
+        if "name" not in info:
+            raise InvalidFormError(b"Could not find 'name' in form section")
+        self.name = info.get("name").strip('"')
+        self.filename = FileName(info["filename"].strip('"')) if "filename" in info else None
+        self.info = info
+
+    @property
+    def is_file(self):
+        return self.filename is not None
+
+    def decode(self, encoding="utf-8", errors = "strict"):
+        return FormValue(self)
+
+
+class FormValue(str):
+    def __new__(cls, s: str):
+        if isinstance(s, FormSection):
+            x = super().__new__(cls, bytes(s).decode())
+            x._set_headers(s.section_header_bytes, s.section_headers, s.name, s.filename, s.info)
+        else:
+            x = super().__new__(cls, s)
+        return x
+
+    def _set_headers(self,
+                     section_header_bytes,
+                     section_headers,
+                        name,
+                        filename,
+                        info):
+        self.section_header_bytes = section_header_bytes
+        self.section_headers = section_headers
+        self.name = name
+        self.filename = filename
+        self.info = info
+
+    @property
+    def is_file(self):
+        return False
+
+
+class FileName(str):
     pass
+
+
+class FormData(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for k, v in self.items():
+            if not v.is_file:
+                v = v.decode()
+                self[k] = v
+
+    def __getattr__(self, item) -> FormSection:
+        return self[item]
+
+
+class FileUpload(FormSection):
+    default_save_folder = None
+    clear_on_close = True
+
+    def _set_headers(self, headers: bytes):
+        super()._set_headers(headers)
+        self.pos = 0
+        self.mode = "rb"
+        self.opened = True
+        self.cleared = False
+        self.content_type = ContentType(self.section_headers.get("Content-Type", ""))
+        self.filetype = FileType(self.content_type)
+
+    def save(self, dst=None):
+        if dst is None:
+            dst = self.default_save_folder
+        if dst is None:
+            dst = Path.cwd()
+        dst = Path(dst)
+        if dst.exists() and dst.is_dir():
+            dst = dst / self.filename
+        with dst.open("wb") as f:
+            f.write(self)
+        return dst
+
+    def open(self, mode: str = "rb") -> "FileUpload":
+        if mode not in ["r", "rb"]:
+            raise ValueError("Invalid mode.")
+        if self.cleared:
+            raise ValueError("Data has been cleared.")
+        self.mode = mode
+        return self
+
+    def read(self, n: int = -1) -> bytes:
+        if self.cleared:
+            raise ValueError("Data has been cleared.")
+        if not self.opened:
+            raise ValueError("I/O operation on closed file.")
+        if n == -1:
+            n = len(self)
+        if (self.pos + n) >= len(self):
+            raise EOFError("End of file.")
+        result = self[self.pos:self.pos + n]
+        self.pos += n
+        if self.mode == "r":
+            return result.decode()
+        return result
+
+    def readline(self, __size = -1):
+        if self.cleared:
+            raise ValueError("Data has been cleared.")
+        if not self.opened:
+            raise ValueError("I/O operation on closed file.")
+        if __size == -1:
+            __size = len(self) - self.pos
+
+        if self.mode == "r":
+            line = ""
+            for i in range(__size):
+                try:
+                    char = self.read(1)
+                except EOFError:
+                    break
+                line += char
+                if char == "\n":
+                    break
+        else:
+            line = b''
+            for i in range(__size):
+                try:
+                    char = self.read(1)
+                except EOFError:
+                    break
+                line += char
+                if char == b"\n":
+                    break
+        return line
+
+    def readlines(self, __hint = -1):
+        if self.cleared:
+            raise ValueError("Data has been cleared.")
+        if not self.opened:
+            raise ValueError("I/O operation on closed file.")
+        if __hint == -1:
+            __hint = len(self) - self.pos
+        lines = []
+        while True:
+            line = self.readline(__hint)
+            __hint -= len(line)
+            if not line:
+                break
+            lines.append(line)
+        return lines
+
+    def readinto(self, __buffer):
+        if self.cleared:
+            raise ValueError("Data has been cleared.")
+        if not self.opened:
+            raise ValueError("I/O operation on closed file.")
+        __buffer[0:len(self)] = self
+        return len(self)
+
+    def readall(self):
+        if self.cleared:
+            raise ValueError("Data has been cleared.")
+        if not self.opened:
+            raise ValueError("I/O operation on closed file.")
+        return self
+
+    def seek(self, pos: int):
+        if self.cleared:
+            raise ValueError("Data has been cleared.")
+        if not self.opened:
+            raise ValueError("I/O operation on closed file.")
+        if pos < 0:
+            raise ValueError("Negative seek position.")
+        if pos >= len(self):
+            raise EOFError("End of file.")
+        self.pos = pos
+
+    def tell(self) -> int:
+        if self.cleared:
+            raise ValueError("Data has been cleared.")
+        if not self.opened:
+            raise ValueError("I/O operation on closed file.")
+        return self.pos
+
+    def close(self, clear=None):
+        self.opened = False
+        if clear is None:
+            clear = self.clear_on_close
+        if clear:
+            self.clear()
+
+    def __repr__(self) -> str:
+        return f"FileUpload({self.filename}|{self.content_type}|{len(self)} bytes)"
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.clear()
+
+    def clear(self):
+        self.opened = False
+        self.cleared = True
+
+File = FileUpload
+Upload = FileUpload
+Files = FileUploads
+Uploads = FileUploads
+Form = FormData
+
+
+class _ContentType:
+    content_types = {
+        "html": "text/html",
+        "css": "text/css",
+        "js": "application/javascript",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "svg": "image/svg+xml",
+        "bmp": "image/bmp",
+        "tiff": "image/tiff",
+        "ico": "image/x-icon",
+        "webp": "image/webp",
+        "stl": "model/stl",
+        "obj": "model/obj",
+        "fbx": "model/fbx",
+        "glb": "model/gltf-binary",
+        "gltf": "model/gltf+json",
+        "3ds": "model/3ds",
+        "3mf": "model/3mf",
+        "json": "application/json",
+        "yml": "application/x-yaml",
+        "yaml": "application/x-yaml",
+        "doc": "application/msword",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls": "application/vnd.ms-excel",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ppt": "application/vnd.ms-powerpoint",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "odt": "application/vnd.oasis.opendocument.text",
+        "ods": "application/vnd.oasis.opendocument.spreadsheet",
+        "odp": "application/vnd.oasis.opendocument.presentation",
+        "odg": "application/vnd.oasis.opendocument.graphics",
+        "odf": "application/vnd.oasis.opendocument.formula",
+        "pdf": "application/pdf",
+        "zip": "application/zip",
+        "tar": "application/x-tar",
+        "gz": "application/gzip",
+        "mp3": "audio/mpeg",
+        "mp4": "video/mp4",
+        "webm": "video/webm",
+        "ogg": "audio/ogg",
+        "wav": "audio/wav",
+        "txt": "text/plain",
+        "csv": "text/csv",
+        "xml": "text/xml",
+        "md": "text/markdown",
+        "py": "text/x-python",
+        "c": "text/x-c",
+        "cpp": "text/x-c++",
+        "h": "text/x-c-header",
+        "hs": "text/x-haskell",
+        "java": "text/x-java",
+        "sh": "text/x-shellscript",
+        "bat": "text/x-batch",
+        "ps1": "text/x-powershell",
+        "rb": "text/x-ruby",
+        "rs": "text/x-rust",
+        "go": "text/x-go",
+        "php": "text/x-php",
+        "pl": "text/x-perl",
+        "swift": "text/x-swift",
+        "asm": "text/x-asm",
+        "toml": "application/toml",
+        "ini": "text/x-ini",
+        "cfg": "text/x-config",
+        "conf": "text/x-config",
+        "gitignore": "text/x-gitignore",
+        "dockerfile": "text/x-dockerfile",
+        None: "application/octet-stream"
+    }
+    file_types = {v: k for k, v in content_types.items()}
+
+    @property
+    def filetype(self):
+        return FileType(self)
+
+    @property
+    def extension(self):
+        return self.filetype.extension
+
+    @classmethod
+    def get_content_type(cls, suffix: str):
+        return cls.content_types.get(suffix.lower(), cls.content_types[cls.default_content_type])
+
+    def get_extension(self, content_type: str):
+        for k, v in self.content_types.items():
+            if v == content_type:
+                return "." + k
+        return ""
+
+
+class ContentType(_ContentType, str):
+    def __instancecheck__(self, instance):
+        return isinstance(instance, str) and instance in self.content_types
+
+
+class FileType(_ContentType, str):
+    def __new__(cls, s):
+        s = str(s)
+        s = s.lower().strip()
+        if s.startswith('.'):
+            s = s[1:]
+        if s in cls.file_types:
+            s = cls.file_types[s]
+
+        return super().__new__(cls, s)
+
+    @property
+    def content_type(self):
+        return ContentType(self)
+
+    def __instancecheck__(self, instance):
+        return isinstance(instance, str) and instance in self.content_types
+
+
+content_types = {FileType(v): ContentType(v) for k, v in ContentType.content_types.items()}
+file_types = {v: k for k, v in content_types.items()}
+ContentType.file_types = file_types
+ContentType.content_types = content_types
+
 
 
 class Headers(dict):
@@ -67,7 +479,7 @@ class HeaderBytes(bytes):
 
     def to_dict(self) -> dict:
         lines = self.decode().splitlines()
-        items = [v.split(":", 1) for v in lines]
+        items = [v.split(":", 1) for v in lines if ":" in v]
         d = {k.strip(): v.strip() for k, v in items}
         return Headers(d)
 
@@ -154,7 +566,8 @@ class Request:
         self.version = HTTPVersion(version)
         self.header_bytes = HeaderBytes(header)
         self._headers = None
-        self.body = RequestBody(body)
+        is_form_data = "form-data" in self.headers.get("Content-Type", "")
+        self.body = RequestBody(body) if not is_form_data else FormBody(body)
         self.client_addr = ClientAddr(client_addr) if client_addr else None
         self.connection_socket = connection_socket
         self.origin = origin
@@ -177,6 +590,16 @@ class Request:
             "body": str(self.body),
             "client_addr": self.client_addr
         })
+
+    @property
+    def form_data(self) -> FormData:
+        if isinstance(self.body, FormBody):
+            return self.body.form_data
+        return FormData()
+
+    @property
+    def files(self) -> FileUploads:
+        return self.body.files
 
     def __str__(self):
         return f"{self.method} {self.origin}{self.path} from {self.client_addr}"
@@ -370,7 +793,7 @@ class Response(Exception, metaclass=ResponseType):
 
     def __init__(self,
                  body: bytes = ResponseBody.EMPTY,
-                 status_code: int = HTTPStatusCode.OK,
+                 status_code: int = None,
                  headers: dict = HeaderBytes.EMPTY,
                  version: str = HTTPVersion.HTTP_1_1,
                  raw: bool = False,
@@ -473,6 +896,10 @@ class ClientError(Response):
 
 
 class BadRequest(ClientError):
+    pass
+
+
+class InvalidFormError(BadRequest):
     pass
 
 
@@ -597,77 +1024,7 @@ class RawResponse(Response):
 
 
 class FileResponse(SuccessResponse):
-    content_types = {
-        "html": "text/html",
-        "css": "text/css",
-        "js": "application/javascript",
-        "png": "image/png",
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "gif": "image/gif",
-        "svg": "image/svg+xml",
-        "bmp": "image/bmp",
-        "tiff": "image/tiff",
-        "ico": "image/x-icon",
-        "webp": "image/webp",
-        "stl": "model/stl",
-        "obj": "model/obj",
-        "fbx": "model/fbx",
-        "glb": "model/gltf-binary",
-        "gltf": "model/gltf+json",
-        "3ds": "model/3ds",
-        "3mf": "model/3mf",
-        "json": "application/json",
-        "yml": "application/x-yaml",
-        "yaml": "application/x-yaml",
-        "doc": "application/msword",
-        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "xls": "application/vnd.ms-excel",
-        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "ppt": "application/vnd.ms-powerpoint",
-        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "odt": "application/vnd.oasis.opendocument.text",
-        "ods": "application/vnd.oasis.opendocument.spreadsheet",
-        "odp": "application/vnd.oasis.opendocument.presentation",
-        "odg": "application/vnd.oasis.opendocument.graphics",
-        "odf": "application/vnd.oasis.opendocument.formula",
-        "pdf": "application/pdf",
-        "zip": "application/zip",
-        "tar": "application/x-tar",
-        "gz": "application/gzip",
-        "mp3": "audio/mpeg",
-        "mp4": "video/mp4",
-        "webm": "video/webm",
-        "ogg": "audio/ogg",
-        "wav": "audio/wav",
-        "txt": "text/plain",
-        "csv": "text/csv",
-        "xml": "text/xml",
-        "md": "text/markdown",
-        "py": "text/x-python",
-        "c": "text/x-c",
-        "cpp": "text/x-c++",
-        "h": "text/x-c-header",
-        "hs": "text/x-haskell",
-        "java": "text/x-java",
-        "sh": "text/x-shellscript",
-        "bat": "text/x-batch",
-        "ps1": "text/x-powershell",
-        "rb": "text/x-ruby",
-        "rs": "text/x-rust",
-        "go": "text/x-go",
-        "php": "text/x-php",
-        "pl": "text/x-perl",
-        "swift": "text/x-swift",
-        "asm": "text/x-asm",
-        "toml": "application/toml",
-        "ini": "text/x-ini",
-        "cfg": "text/x-config",
-        "conf": "text/x-config",
-        "gitignore": "text/x-gitignore",
-        "dockerfile": "text/x-dockerfile",
-        None: "application/octet-stream"
-    }
+    content_type = FileType.content_types
 
     default_content_type = None
 
@@ -1260,9 +1617,6 @@ class FullPath(str):
 class Method(str):
     pass
 
-
-class File(bytes):
-    pass
 
 
 class ErrorModes:

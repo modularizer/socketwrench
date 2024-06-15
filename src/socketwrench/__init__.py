@@ -3,6 +3,7 @@ def _spoof_modules(which="all"):
     from socketwrench.settings import config
     config["spoof_modules"] = which
 
+
 def set_socket_module(module):
     from socketwrench.settings import config
     if not hasattr(module, "socket"):
@@ -14,11 +15,19 @@ class _unspecified:
     pass
 
 
-def serve(*args, spoof_modules=_unspecified, socket=_unspecified, log_level=None, **kwargs):
+def serve(*args,
+          spoof_modules=_unspecified,
+          socket=_unspecified,
+          log_level=None,
+          autofill=True,
+          **kwargs):
     if spoof_modules is not _unspecified:
         _spoof_modules(spoof_modules)
     if socket is not _unspecified:
         set_socket_module(socket)
+    if not autofill:
+        from socketwrench.settings import disable_autofill
+        disable_autofill()
     import socketwrench.public
     if log_level is not None:
         from socketwrench.standardlib_dependencies import logging

@@ -3,7 +3,7 @@ from socketwrench.standardlib_dependencies import (
     socket,
 )
 
-from socketwrench.types import Request, Response
+from socketwrench.types import Request, Response, InternalServerError
 
 logger = logging.getLogger("socketwrench")
 
@@ -42,6 +42,10 @@ class Connection:
             return request, response, True
         except Exception as e:
             logger.error(f"Error handling request: {e}")
+            try:
+                self.send_response(self.socket, InternalServerError())
+            except Exception as e2:
+                logger.error(f"Error sending response: {e2}")
             self.close()
             raise e
 
@@ -68,7 +72,7 @@ class Connection:
         # Parsing Content-Length if present for requests with body
         if b'Content-Length:' in pre_body_bytes:
             length = int(pre_body_bytes.split(b'Content-Length: ')[1].split(new_line)[0])
-            while len(body) < length and not self.cleanup_event or not self.cleanup_event.is_set():
+            while len(body) < length and ((not self.cleanup_event) or (not self.cleanup_event.is_set())):
                 body += connection_socket.recv(chunk_size)
         else:
             body = b''

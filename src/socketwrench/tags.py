@@ -25,8 +25,10 @@ def private(handler):
     return handler
 
 
-def allowed_methods(*methods: str):
-    def decorator(handler, route: str = None, error_mode: str = None, openapi: dict = None, **kwargs):
+def allowed_methods(*methods: str, autofill=None):
+    def decorator(handler, route: str = None, error_mode: str = None, openapi: dict = None, autofill=None, **kwargs):
+        if autofill is not None:
+            kwargs["autofill"] = autofill
         if isinstance(handler, str) and route is None:
             return partial(get, route=handler, error_mode=error_mode, openapi=openapi, **kwargs)
         if route is not None:

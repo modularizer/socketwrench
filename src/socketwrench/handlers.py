@@ -1,3 +1,4 @@
+from socketwrench.settings import config
 from socketwrench.standardlib_dependencies import (
     builtins,
     inspect,
@@ -11,7 +12,7 @@ from socketwrench.standardlib_dependencies import (
 from socketwrench.tags import tag, get, gettag
 from socketwrench.types import Request, Response, Query, Body, Route, FullPath, Method, File, ClientAddr, \
     HTTPStatusCode, ErrorResponse, Headers, ErrorModes, FileResponse, HTMLResponse, url_decode, StandardHTMLResponse, \
-    status_code_names
+    status_code_names, FileUpload, FileUploads, FormData, FileName, FileType, HTTPStatusCodeResponses
 
 logger = logging.getLogger("socketwrench")
 
@@ -41,8 +42,34 @@ class Autofill:
     def method(self, request: Request) -> Method:
         return Method(request.method)
 
-    def file(self, request: Request) -> File:
-        return File(request.body)
+    def files(self, request: Request) -> FileUploads:
+        return request.files
+
+    def form_data(self, request: Request) -> FormData:
+        return request.form_data
+
+    def file(self, request: Request) -> FileUpload:
+        files = request.files
+        if not files:
+            return None
+        if len(files) == 1:
+            return files[0]
+        files_named_file = [f for f in files if f.name == "file"]
+        if len(files_named_file) == 1:
+            return files_named_file[0]
+        raise ValueError("Unable to determine which file to use for autofilled parameter 'file'.")
+
+    def filename(self, request: Request) -> FileName:
+        file = self.file(request)
+        if file:
+            return file.filename
+        return None
+
+    def filetype(self, request: Request) -> FileType:
+        file = self.file(request)
+        if file:
+            return file.filetype
+        return None
 
     def client_addr(self, request: Request) -> ClientAddr:
         return ClientAddr(request.client_addr)
@@ -66,7 +93,11 @@ available_types = {
     "route": Route,
     "full_path": FullPath,
     "method": Method,
-    "file": File,
+    "files": FileUploads,
+    "file": FileUpload,
+    "filename": FileName,
+    "filetype": FileType,
+    "form_data": FormData,
     "client_addr": ClientAddr,
     "socket": socket.socket,
 }
@@ -171,6 +202,7 @@ def cast_to_types(query, signature):
 
 def preprocess_args(_handler):
     sig = inspect.signature(_handler)
+    ignore_special_names = getattr(_handler, "ignore_special_names", config["ignore_special_names"])
 
     # make sure the handler doesn't use "args" unless as *args
     if "args" in sig.parameters and sig.parameters["args"].kind != inspect.Parameter.VAR_POSITIONAL:
@@ -183,6 +215,7 @@ def preprocess_args(_handler):
     autofill = Autofill()
 
     # we will pass the request to any parameter named "request" or typed as Request
+    special_names = [k for k in available_types]
     special_params = {k: [] for k in available_types}
 
     available_type_values = list(available_types.values())
@@ -197,16 +230,16 @@ def preprocess_args(_handler):
             i = available_type_values.index(param.annotation)
             key = available_type_keys[i]
             special_params[key].append(name)
-        elif param.annotation is inspect.Parameter.empty and param.name in available_types:
+        elif param.annotation is inspect.Parameter.empty and (param.name in special_names) and not ignore_special_names:
             special_params[param.name].append(name)
-        elif param.name in available_types:
+        elif param.name in special_names and not ignore_special_names:
             a = param.annotation
             t = available_types[param.name]
             if isinstance(a, str):
                 if a != t.__name__ and a not in [_t.__name__ for _t in t.__subclasses()]:
-                    raise ValueError(f"Parameter '{param.name}' of {_handler} must be typed as {available_types[param.name]}, not {param.annotation}.")
+                    raise ValueError(f"Parameter '{param.name}' of {_handler} must be typed as {available_types[param.name]}, not {param.annotation}. To ignore this, tag the function with @no_autofill or set autofill=False in serve()")
             elif not a is t or issubclass(a, t):
-                raise ValueError(f"Parameter '{param.name}' of {_handler} must be typed as {available_types[param.name]}, not {param.annotation}.")
+                raise ValueError(f"Parameter '{param.name}' of {_handler} must be typed as {available_types[param.name]}, not {param.annotation}. To ignore this, tag the function with @no_autofill or set autofill=False in serve()")
 
         if collector_found:
             pass
@@ -256,6 +289,12 @@ def preprocess_args(_handler):
                 kwargs.update(body)
             except:
                 pass
+
+        for k, v in request.form_data.items():
+            if not v.is_file:
+                if sig.parameters.get(k):
+                    v = cast_to_typehint(v, sig.parameters[k].annotation)
+            kwargs[k] = v
 
         kwargs.update(route_params)
 
@@ -359,24 +398,65 @@ class StaticFileHandler(MatchableHandlerABC):
     is_wrapped = True
     allowed_methods = ["GET", "HEAD"]
 
-    def __init__(self, path, route: str = None):
+    def __init__(self, path = "static",
+                 route: str = None,
+                 allow_uploads=False,
+                 overwrite=False,
+                 allow_downloads=True,
+                 ):
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.route = route or "/" + path.name
-        self.allowed_methods = ["GET", "HEAD"]
+        self.allowed_methods = []
+        if allow_uploads:
+            self.allowed_methods.append("POST")
+        if allow_downloads:
+            self.allowed_methods.append("GET")
+            self.allowed_methods.append("HEAD")
+        self.allow_uploads = allow_uploads
+        self.overwrite = overwrite
+        self.allow_downloads = allow_downloads
 
     def match(self, route: str) -> bool:
-        if not route.startswith(self.route):
+        if self.route and not route.startswith(self.route):
+            print("Doesn't match", route, self.route)
             return False
         added = route[len(self.route):]
         p = (self.path / added.strip("/")) if added else self.path
-        if not p.exists():
+        if not p.exists() and not self.allow_uploads:
             return False
         return True
+
+    def _upload(self, request: Request):
+        if request.method != "POST":
+            raise HTTPStatusCodeResponses.METHOD_NOT_ALLOWED
+        if not self.allow_uploads:
+            raise HTTPStatusCodeResponses.FORBIDDEN
+        if not request.files:
+            raise HTTPStatusCodeResponses.BAD_REQUEST
+        paths = [self.path / file.filename for file in request.files]
+        for p in paths:
+            if p.exists() and not self.overwrite:
+                logger.warning(f"File already exists: {p}")
+                if self.allow_downloads:
+                    raise FileExistsError(f"File already exists: {p}")
+                else:
+                    raise HTTPStatusCodeResponses.FORBIDDEN
+
+        for file in request.files:
+            if file.is_file:
+                file.save(self.path / file.filename)
+        return Response(b"Uploaded", status_code=201, version=request.version)
 
     def __call__(self, request: Request) -> Response:
         route = request.path.route()
         if not route.startswith(self.route):
             return Response(b"Not Found", status_code=404, version=request.version)
+        if route == (self.route + "upload"):
+            return self._upload(request)
+        if not self.allow_downloads:
+            raise HTTPStatusCodeResponses.FORBIDDEN
         added = route[len(self.route):]
         p = (self.path / added.strip("/")) if added else self.path
 
@@ -390,6 +470,17 @@ class StaticFileHandler(MatchableHandlerABC):
             return Response(contents.encode(), version=request.version)
         r = FileResponse(p, version=request.version)
         return r
+
+
+class UploadFolder(StaticFileHandler):
+    def __init__(self, path="uploads", route: str = None, allow_uploads=True, overwrite=False, allow_downloads=False):
+        super().__init__(path, route=route, allow_uploads=allow_uploads, overwrite=overwrite, allow_downloads=allow_downloads)
+
+
+class Workspace(StaticFileHandler):
+    def __init__(self, path = "workspace", route: str = None, allow_uploads=True, overwrite=True, allow_downloads=True):
+        super().__init__(path, route=route, allow_uploads=allow_uploads, overwrite=overwrite, allow_downloads=allow_downloads)
+
 
 
 def matches_variadic_route(route: str, variadic_route: str) -> dict:
@@ -570,6 +661,9 @@ class RouteHandler:
                         self._add_subroute(sub, v)
                     elif isinstance(v, dict):
                         self._add_subroute(sub, RouteHandler(v, base_path=sub, **kw))
+                    elif isinstance(v, StaticFileHandler):
+                        v.route = sub
+                        self.matchable_routes[sub] = v
                     elif is_object_instance(v):
                         self._add_subroute(sub, RouteHandler(v, base_path=sub, **kw))
                     else:
@@ -656,10 +750,7 @@ class RouteHandler:
                         continue
                     routes = getattr(v, "routes", [k])
                     for route in routes:
-                        try:
-                            self[route] = v
-                        except:
-                            pass
+                        self[route] = v
         if callable(obj):
             self[""] = obj
 
@@ -739,6 +830,7 @@ class RouteHandler:
         route = request.path.route()
 
         if not route.startswith(self.base_path):
+            logger.warning(f"{route} doesn't start with {self.base_path}")
             return Response(b'Not Found',
                             status_code=404,
                             headers={"Content-Type": "text/plain"},
@@ -760,6 +852,7 @@ class RouteHandler:
                 if v.match(route):
                     handler = v
                     break
+                logger.debug(f"Route {route} doesn't match any handlers")
             else:
                 x = url_decode(route)
                 if "{" in x and x in self.variadic_routes:
@@ -848,7 +941,7 @@ class RouteHandler:
         if allowed_methods is None:
             allowed_methods = getattr(handler, "allowed_methods", ("GET",))
         em = getattr(handler, "error_mode", self.error_mode)
-        h = wrap_handler(handler, error_mode=em)
+        h = wrap_handler(handler, error_mode=em) if not isinstance(handler, MatchableHandlerABC) else handler
         h.__dict__["allowed_methods"] = allowed_methods
         if self.base_path == "/" and route.startswith("/"):
             route = route[1:]
