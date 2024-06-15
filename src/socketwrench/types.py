@@ -89,7 +89,7 @@ class RequestPath(str):
     def route(self) -> str:
         """Extracts the path from the path and remove the query."""
         p = self.split("?", 1)[0]
-        return p
+        return url_decode(p)
 
     def query_args(self) -> dict[str, str]:
         """Extracts the query string from the path and parses into a dictionary."""
@@ -98,7 +98,7 @@ class RequestPath(str):
             return {}
         q = q[1:]
         items = [v.split("=", 1) if '=' in v else (v, "") for v in q.split("&")]
-        d = {url_decode(k): url_decode(v) for k, v in items}
+        d = {url_decode_query(k): url_decode_query(v) for k, v in items}
         return d
 
 
@@ -1217,16 +1217,31 @@ url_encodings = {
 }
 
 
-def url_encode(s: str) -> str:
+def url_encode(s: str, is_query=False) -> str:
+    if is_query:
+        extra_encodings = {" ": "+", "&": "%26", "=": "%3D"}
+        for k, e in extra_encodings.items():
+            s = s.replace(k, e)
     for k, e in url_encodings.items():
         s = s.replace(k, e)
     return s
 
 
-def url_decode(s: str) -> str:
+def url_encode_query(s: str) -> str:
+    return url_encode(s, True)
+
+
+def url_decode(s: str, is_query=False) -> str:
     for e, k in url_encodings.items():
         s = s.replace(k, e)
+    if is_query:
+        extra_decodings = {"+": " "}
+        for k, e in extra_decodings.items():
+            s = s.replace(k, e)
     return s
+
+def url_decode_query(s: str) -> str:
+    return url_decode(s, True)
 
 
 class Query(dict):
