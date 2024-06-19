@@ -31,7 +31,8 @@ def serve(*args,
     import socketwrench.public
     if log_level is not None:
         from socketwrench.standardlib_dependencies import logging
-        logging.basicConfig(level=log_level)
+        logger = logging.getLogger("socketwrench")
+        logger.setLevel(level)
     return socketwrench.public.serve(*args, **kwargs)
 
 
