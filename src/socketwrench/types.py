@@ -1024,7 +1024,7 @@ class RawResponse(Response):
 
 
 class FileResponse(SuccessResponse):
-    content_type = FileType.content_types
+    content_types = FileType.content_types
 
     default_content_type = None
 
