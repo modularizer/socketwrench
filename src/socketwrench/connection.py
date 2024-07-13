@@ -92,8 +92,9 @@ class Connection:
         return False
 
     def close(self):
-        self.socket.shutdown(socket.SHUT_WR) # seems to be needed for linux?
-        self.socket.close()
+        if self.socket and not getattr(self.socket, '_closed', False):
+            self.socket.shutdown(socket.SHUT_WR) # seems to be needed for linux?
+            self.socket.close()
 
     def __repr__(self):
         if self._rep is None:

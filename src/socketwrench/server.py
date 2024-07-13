@@ -9,6 +9,7 @@ from socketwrench.standardlib_dependencies import (
 
 from socketwrench.connection import Connection
 from socketwrench.handlers import RouteHandler, wrap_handler, is_object_instance
+from socketwrench.tls.ssl import SSL
 
 logger = logging.getLogger("socketwrench")
 
@@ -45,6 +46,9 @@ class Server(socket.socket):
                  protocol: str = "http",
                  secured: bool = False,
                  origin: str = None,
+                 keyfile: str | Path = None,
+                 certfile: str | Path = None,
+                 ssl_version: int = None,
                  **kwargs
                  ):
         """A simple HTTP server built directly on top of socket.socket.
@@ -69,11 +73,17 @@ class Server(socket.socket):
             protocol (str, optional): The protocol to use for the server in logging statements. Defaults to "http".
             secured (bool, optional): Whether the server is secured. Defaults to False. Only used for logging full url.
             origin (str, optional): The full URL to use for the server in logging statements, otherwise we guess. Defaults to None.
+            keyfile (str | Path, optional): The path to the keyfile to use for SSL. Defaults to None.
+            certfile (str | Path, optional): The path to the certfile to use for SSL. Defaults to None.
+            ssl_version (int, optional): The SSL version to use for the server. Defaults to None.
         """
         if socket_options == "default":
             socket_options = self.default_socket_options
         if isinstance(routes, type):
             routes = routes()
+
+        if keyfile and certfile:
+            self.ssl = SSL(keyfile, certfile, ssl_version)
 
         s = str(routes)
         s2 = s.split("\n")[0][:50]
