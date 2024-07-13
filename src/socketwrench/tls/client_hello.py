@@ -2,7 +2,7 @@ from typing import Literal, Optional, Dict, Any, TypedDict
 
 from socketwrench.tls.cipher_suites import CipherSuite, UnrecognizedCipherSuite
 
-from socketwrench.tls.extensions import ExtensionType, UnrecognizedExtensionType
+from socketwrench.tls.extensions.extension_types import ExtensionType, UnrecognizedExtensionType, parse_extension
 
 
 class ParsedClientHello(TypedDict):
@@ -15,7 +15,7 @@ class ParsedClientHello(TypedDict):
     random: bytes
     session_id: bytes
     cipher_suites: list[CipherSuite | UnrecognizedCipherSuite]
-    extensions: dict[ExtensionType | UnrecognizedExtensionType, bytes]
+    extensions: dict[ExtensionType | UnrecognizedExtensionType, Any]
 
 
 class ClientHello:
@@ -47,7 +47,7 @@ class ClientHello:
     def is_client_hello(cls, message: bytes) -> tuple[Literal[True, "partial", False], ParsedClientHello]:
         n = len(message)
         parsed_info = {
-            "message": bytes
+            "message": message
         }
 
         if not (message and isinstance(message, bytes)):
@@ -182,13 +182,10 @@ class ClientHello:
         while extension_bytes:
             extension_type = int.from_bytes(extension_bytes[:2], 'big')
             extension_data_length = int.from_bytes(extension_bytes[2:4], 'big')
-            try:
-                t = ExtensionType(extension_type)
-            except ValueError:
-                t = UnrecognizedExtensionType(extension_bytes[:2])
             # print(f"Extension ({t}) length: {extension_data_length}")
             extension_data = extension_bytes[4:4 + extension_data_length]
-            extensions[t] = extension_data
+            t, d = parse_extension(extension_type, extension_data)
+            extensions[t] = d
             extension_bytes = extension_bytes[4 + extension_data_length:]
         parsed_info["extensions"] = extensions
         return True, parsed_info
