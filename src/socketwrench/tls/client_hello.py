@@ -1,6 +1,6 @@
 from typing import Literal, Optional, Dict, Any, TypedDict
 
-from socketwrench.tls.cipher_suites import CipherSuite, UnrecognizedCipherSuite
+from socketwrench.tls.cipher_suites.cipher_suites import CipherSuite, UnrecognizedCipherSuite
 
 from socketwrench.tls.extensions.extension_types import ExtensionType, UnrecognizedExtensionType, parse_extension, \
     Extensions

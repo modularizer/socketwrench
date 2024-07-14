@@ -39,6 +39,8 @@ class UnrecognizedSupportedGroup(int):
 
 
 class SupportedGroups(list):
+    number = 10
+
     @classmethod
     def parse(cls, data: bytes) -> list:
         if len(data) < 2:
@@ -54,3 +56,22 @@ class SupportedGroups(list):
                 v = UnrecognizedSupportedGroup(x)
             groups.append(v)
         return cls(groups)
+
+    @property
+    def data(self) -> bytes:
+        data = b''
+        for group in self:
+            if isinstance(group, UnrecognizedSupportedGroup):
+                data += group.to_bytes(2, "big")
+            else:
+                data += group.value.to_bytes(2, "big")
+        return len(data).to_bytes(2, 'big') + data
+
+    def to_bytes(self) -> bytes:
+        # convert number to two bytes, and length to two bytes
+        n = self.number.to_bytes(2, "big")
+        l = len(self.data).to_bytes(2, "big")
+        return n + l + self.data
+
+    def __bytes__(self):
+        return self.to_bytes()

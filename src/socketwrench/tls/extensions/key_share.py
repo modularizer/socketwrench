@@ -2,6 +2,8 @@ from socketwrench.tls.extensions.supported_groups import SupportedGroup, Unrecog
 
 
 class KeyShare(list):
+    number = 51
+
     @classmethod
     def parse(cls, data: bytes) -> list:
         full_length = int.from_bytes(data[:2], 'big')
@@ -42,6 +44,29 @@ class KeyShare(list):
             offset += 4 + key_exchange_length
 
         return cls(key_shares)
+
+    @property
+    def data(self) -> bytes:
+        data = b''
+        for key_share in self:
+            named_group = key_share["named_group"]
+            if isinstance(named_group, UnrecognizedSupportedGroup):
+                data += named_group
+            else:
+                data += named_group.to_bytes(2, "big")
+            key_exchange = key_share["key_exchange"]
+            key_exchange_length = len(key_exchange).to_bytes(2, "big")
+            data += key_exchange_length + key_exchange
+        return len(data).to_bytes(2, "big") + data
+
+    def to_bytes(self) -> bytes:
+        # convert number to two bytes, and length to two bytes
+        n = self.number.to_bytes(2, "big")
+        l = len(self.data).to_bytes(2, "big")
+        return n + l + self.data
+
+    def __bytes__(self):
+        return self.to_bytes()
 
 
 # Example usage

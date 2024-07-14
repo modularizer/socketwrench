@@ -29,6 +29,8 @@ class SignatureAlgorithm(Enum):
 
 
 class SignatureAlgorithms(list):
+    number = 13
+
     @classmethod
     def parse(cls, data: bytes) -> list:
         if len(data) < 2:
@@ -37,3 +39,19 @@ class SignatureAlgorithms(list):
         length = int.from_bytes(data[:2], 'big')
         algorithms = [SignatureAlgorithm(int.from_bytes(data[i:i + 2], 'big')) for i in range(2, 2 + length, 2)]
         return cls(algorithms)
+
+    @property
+    def data(self) -> bytes:
+        data = len(self).to_bytes(2, "big")
+        for algorithm in self:
+            data += int(algorithm).to_bytes(2, "big")
+        return data
+
+    def to_bytes(self) -> bytes:
+        # convert number to two bytes, and length to two bytes
+        n = self.number.to_bytes(2, "big")
+        l = len(self.data).to_bytes(2, "big")
+        return n + l + self.data
+
+    def __bytes__(self):
+        return self.to_bytes()

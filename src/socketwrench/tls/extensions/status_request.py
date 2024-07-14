@@ -10,9 +10,9 @@ class UnrecognizedStatusType(int):
     pass
 
 
-
-
 class StatusRequest(dict):
+    number = 5
+
     @classmethod
     def parse(cls, data: bytes) -> dict:
         if len(data) < 5:
@@ -70,3 +70,30 @@ class StatusRequest(dict):
             offset += 4 + ext_length
 
         return extensions
+
+    @property
+    def data(self) -> bytes:
+        data = b''
+        data += bytes(self["status_type"])
+        responder_ids = b''
+        for responder_id in self["responder_ids"]:
+            responder_id = responder_id.to_bytes(2, "big")
+            responder_ids += responder_id
+        data += len(responder_ids).to_bytes(2, "big") + responder_ids
+        extensions = b''
+        for extension in self["extensions"]:
+            ext_type = extension["extension_type"].to_bytes(2, "big")
+            ext_length = extension["extension_length"].to_bytes(2, "big")
+            ext_data = extension["extension_data"]
+            extensions += ext_type + ext_length + ext_data
+        data += len(extensions).to_bytes(2, "big") + extensions
+        return data
+
+    def to_bytes(self) -> bytes:
+        # convert number to two bytes, and length to two bytes
+        n = self.number.to_bytes(2, "big")
+        l = len(self.data).to_bytes(2, "big")
+        return n + l + self.data
+
+    def __bytes__(self):
+        return self.to_bytes()

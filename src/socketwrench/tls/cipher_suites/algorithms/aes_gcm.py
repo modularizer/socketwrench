@@ -1,8 +1,8 @@
-from socketwrench.tls.cipher_suites.algorithms.aes import AES_128
+from socketwrench.tls.cipher_suites.algorithms.aes import AES_128, AES, AES_256
 from socketwrench.tls.cipher_suites.algorithms.sha256 import SHA256
 
 
-class AES_128_GCM(AES_128):
+class _AES_GCM(AES):
     def __init__(self, key: bytes):
         self.key = key
         self.round_keys = self.parse_key_to_round_keys(key)
@@ -136,9 +136,19 @@ class AES_128_GCM(AES_128):
         return plaintext
 
 
-class CipherSuite:
+class AES_128_GCM(AES_128, _AES_GCM):
+    pass
+
+
+class AES_256_GCM(AES_256, _AES_GCM):
+    pass
+
+
+class AESGCMCipherSuite_SHA256:
+    AESGCM: type[_AES_GCM]
+
     def __init__(self, key: bytes):
-        self.aes_gcm = AES_128_GCM(key)
+        self.aes_gcm = self.AESGCM(key)
         self.hash_function = SHA256.hexdigest
 
     def encrypt(self, plaintext: bytes, aad: bytes, nonce: bytes) -> tuple[bytes, bytes, bytes]:
@@ -150,3 +160,12 @@ class CipherSuite:
         if self.hash_function(plaintext) != hash_value:
             raise ValueError("Hash mismatch, data integrity compromised")
         return plaintext
+
+
+class AES128GCM_SHA256(AESGCMCipherSuite_SHA256):
+    AESGCM = AES_128_GCM
+
+
+class AES256GCM_SHA256(AESGCMCipherSuite_SHA256):
+    AESGCM = AES_256_GCM
+

@@ -12,6 +12,8 @@ class UnrecognizedECPointFormat(int):
     pass
 
 class ECPointFormats(list):
+    number = 11
+
     @classmethod
     def parse(cls, data: bytes) -> list:
         length = data[0]
@@ -29,3 +31,22 @@ class ECPointFormats(list):
             else:
                 formats.append(UnrecognizedECPointFormat(byte))
         return cls(formats)
+
+    @property
+    def data(self) -> bytes:
+        data = b''
+        for format in self:
+            if isinstance(format, UnrecognizedECPointFormat):
+                data += format
+            else:
+                data += format.to_bytes(1, "big")
+        return len(data).to_bytes(1, "big") + data
+
+    def to_bytes(self) -> bytes:
+        # convert number to two bytes, and length to two bytes
+        n = self.number.to_bytes(2, "big")
+        l = len(self.data).to_bytes(2, "big")
+        return n + l + self.data
+
+    def __bytes__(self):
+        return self.to_bytes()

@@ -1,11 +1,18 @@
 import os
 import struct
 
+from socketwrench.tls.cipher_suites.algorithms.aes_gcm import AES128GCM_SHA256
+from socketwrench.tls.cipher_suites.cipher_suites import CipherSuite
 from socketwrench.tls.client_hello import ClientHello
 from socketwrench.tls.versions import TLSVersion
 
 
 class ServerHello:
+    supported_cipher_suites = {
+        CipherSuite.TLS_AES_128_GCM_SHA256: AES128GCM_SHA256
+
+    }
+
     def __init__(self, client_hello: ClientHello):
         self.client_hello = client_hello
         self.version = TLSVersion.TLS_1_2
@@ -17,27 +24,25 @@ class ServerHello:
 
     def select_cipher_suite(self, client_cipher_suites):
         # Select a cipher suite supported by the server
-        server_supported_suites = [b'\x00\x2F', b'\x00\x35']  # Example: TLS_RSA_WITH_AES_128_CBC_SHA, TLS_RSA_WITH_AES_256_CBC_SHA
         for suite in client_cipher_suites:
-            if suite in server_supported_suites:
+            if suite in self.supported_cipher_suites:
                 return suite
         raise ValueError("No supported cipher suite found")
 
     def build_extensions(self, client_extensions):
         # Build server extensions based on client's extensions and server capabilities
         extensions = b''
-        # Example: Server might include Supported Groups extension if client proposed it
-        if b'\x00\x0A' in client_extensions:
-            supported_groups = b'\x00\x0A\x00\x04\x00\x02\x00\x1D'  # Example extension: Supported Groups
-            extensions += supported_groups
+
+        # for extension_type, value in client_extensions.items():
+        #     if extension_type == b'\x00\x0A':
         return extensions
 
     def to_bytes(self):
         # Construct the ServerHello message
         handshake_message = (
             b'\x02' +  # Handshake Type: ServerHello
-            struct.pack('!I', len(self.version + self.random + self.session_id + self.cipher_suite + self.compression_method + self.extensions))[1:] +
-            self.version +
+            struct.pack('!I', len(self.version.to_bytes() + self.random + self.session_id + self.cipher_suite + self.compression_method + self.extensions))[1:] +
+            self.version.to_bytes() +
             self.random +
             struct.pack('B', len(self.session_id)) + self.session_id +
             self.cipher_suite +
@@ -47,7 +52,7 @@ class ServerHello:
 
         record_layer = (
             b'\x16' +  # Content Type: Handshake
-            self.version +
+            self.version.to_bytes() +
             struct.pack('!H', len(handshake_message)) +
             handshake_message
         )
