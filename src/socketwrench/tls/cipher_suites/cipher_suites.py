@@ -1,4 +1,5 @@
-from enum import IntEnum
+from enum import IntEnum, Enum
+
 
 class CipherSuite(IntEnum):
     TLS_NULL_WITH_NULL_NULL = 0
@@ -357,3 +358,76 @@ class CipherSuite(IntEnum):
 
 class UnrecognizedCipherSuite(bytes):
     pass
+
+
+class KeyExchangeAlgorithm(Enum):
+    NULL = 'NULL'  # No key exchange
+    RSA = 'RSA'
+    RSA_EXPORT = 'RSA_EXPORT'  # Exportable RSA
+    DH = 'DH'  # Diffie-Hellman
+    DHE = 'DHE'  # Ephemeral Diffie-Hellman
+    ECDH = 'ECDH'  # Elliptic Curve Diffie-Hellman
+    ECDHE = 'ECDHE'  # Ephemeral Elliptic Curve Diffie-Hellman
+    PSK = 'PSK'  # Pre-Shared Key
+    DHE_PSK = 'DHE_PSK'  # Ephemeral Diffie-Hellman with PSK
+    ECDHE_PSK = 'ECDHE_PSK'  # Ephemeral Elliptic Curve Diffie-Hellman with PSK
+    KRB5 = 'KRB5'  # Kerberos 5
+    ANON_DH = 'ANON_DH'  # Anonymous Diffie-Hellman
+
+
+class AuthenticationAlgorithm(Enum):
+    NULL = 'NULL'  # No authentication
+    RSA = 'RSA'
+    DSA = 'DSA'  # Digital Signature Algorithm
+    ECDSA = 'ECDSA'  # Elliptic Curve Digital Signature Algorithm
+    PSK = 'PSK'  # Pre-Shared Key
+    ANON = 'ANON'  # Anonymous authentication (rarely used)
+    KRB5 = 'KRB5'  # Kerberos 5
+
+
+class BulkEncryptionAlgorithm(Enum):
+    NULL = 'NULL'  # No encryption
+    RC4 = 'RC4'
+    RC4_40 = 'RC4_40'  # 40-bit RC4
+    RC4_128 = 'RC4_128'  # 128-bit RC4
+    DES = 'DES'  # Data Encryption Standard
+    TRIPLE_DES = '3DES'  # Triple DES
+    AES_128_CBC = 'AES_128_CBC'  # Advanced Encryption Standard with 128-bit key in CBC mode
+    AES_256_CBC = 'AES_256_CBC'  # Advanced Encryption Standard with 256-bit key in CBC mode
+    AES_128_GCM = 'AES_128_GCM'  # Advanced Encryption Standard with 128-bit key in Galois/Counter Mode
+    AES_256_GCM = 'AES_256_GCM'  # Advanced Encryption Standard with 256-bit key in Galois/Counter Mode
+    CHACHA20_POLY1305 = 'CHACHA20_POLY1305'  # ChaCha20 with Poly1305 for AEAD
+    CAMELLIA_128_CBC = 'CAMELLIA_128_CBC'
+    CAMELLIA_256_CBC = 'CAMELLIA_256_CBC'
+    ARIA_128_CBC = 'ARIA_128_CBC'
+    ARIA_256_CBC = 'ARIA_256_CBC'
+    AES_128_CCM = 'AES_128_CCM'
+    AES_256_CCM = 'AES_256_CCM'
+    SM4_GCM = 'SM4_GCM'
+    SM4_CCM = 'SM4_CCM'
+
+
+
+class MACAlgorithm(Enum):
+    NULL = 'NULL'  # No MAC
+    MD5 = 'MD5'  # Message Digest 5
+    SHA1 = 'SHA1'  # Secure Hash Algorithm 1
+    SHA256 = 'SHA256'  # Secure Hash Algorithm 256
+    SHA384 = 'SHA384'  # Secure Hash Algorithm 384
+    POLY1305 = 'POLY1305'  # Poly1305 for AEAD
+    SM3 = 'SM3'  # Chinese Cryptographic Algorithm
+
+
+
+
+class CipherSuiteABC:
+    id: int
+    name: str
+    key_exchange_algorithm: KeyExchangeAlgorithm
+    authentication_algorithm: AuthenticationAlgorithm
+    bulk_encryption_algorithm: BulkEncryptionAlgorithm
+    mac_algorithm: MACAlgorithm
+
+
+
+

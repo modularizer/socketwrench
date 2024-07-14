@@ -8,7 +8,6 @@ from socketwrench.tls.versions import TLSVersion
 
 
 class ParsedClientHello(TypedDict):
-    tls_version: float
     client_version: float
     random: bytes
     session_id: bytes
@@ -17,7 +16,6 @@ class ParsedClientHello(TypedDict):
 
 
 class ClientHello(bytes):
-    tls_version: float
     client_version: float
     random: bytes
     session_id: bytes
@@ -69,7 +67,8 @@ class ClientHello(bytes):
         else:
             return False, parsed_info
 
-        parsed_info["tls_version"] = tls_version
+        # for some reason, the client_hello message always? has a tls version of 1.0, but the client version is correct
+
 
         if n < 5:
             return "partial", parsed_info

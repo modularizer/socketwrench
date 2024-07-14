@@ -28,3 +28,13 @@ class TLSVersion(Enum):
             if minor == 0:
                 return cls.SSL_3_0
         raise ValueError("Invalid SupportedVersion data")
+
+    def to_bytes(self) -> bytes:
+        return bytes(self.value)
+
+    def __bytes__(self):
+        return self.to_bytes()
+
+    def __float__(self):
+        return float(self.value[0] + self.value[1] / 10)
+
