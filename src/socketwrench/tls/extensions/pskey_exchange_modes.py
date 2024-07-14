@@ -1,9 +1,10 @@
-from enum import Enum
+from enum import Enum, IntEnum
 
 
-class PSKKeyExchangeMode(Enum):
-    PSK_DHE_KE = "psk_dhe_ke"
-    PSK_KE = "psk_ke"
+class PSKKeyExchangeMode(IntEnum):
+    PSK_KE = 0
+    PSK_DHE_KE = 1
+
 
     def __str__(self):
         return self.value

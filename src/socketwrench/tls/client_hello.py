@@ -2,7 +2,8 @@ from typing import Literal, Optional, Dict, Any, TypedDict
 
 from socketwrench.tls.cipher_suites import CipherSuite, UnrecognizedCipherSuite
 
-from socketwrench.tls.extensions.extension_types import ExtensionType, UnrecognizedExtensionType, parse_extension
+from socketwrench.tls.extensions.extension_types import ExtensionType, UnrecognizedExtensionType, parse_extension, \
+    Extensions
 
 
 class ParsedClientHello(TypedDict):
@@ -15,7 +16,7 @@ class ParsedClientHello(TypedDict):
     random: bytes
     session_id: bytes
     cipher_suites: list[CipherSuite | UnrecognizedCipherSuite]
-    extensions: dict[ExtensionType | UnrecognizedExtensionType, Any]
+    extensions: Extensions
 
 
 class ClientHello:
@@ -37,7 +38,7 @@ class ClientHello:
                 raise RuntimeError("Invalid ClientHello")
         else:
             parsed_client_hello = data
-        self.message = message
+        self.message = data
         self.__dict__.update(parsed_client_hello)
 
     def __getitem__(self, item):
@@ -177,17 +178,9 @@ class ClientHello:
             if len(client_hello_data) < offset + 2 + extensions_length:
                 return "partial", parsed_info
 
-        extensions = {}
         extension_bytes = client_hello_data[offset + 2:offset + 2 + extensions_length]
-        while extension_bytes:
-            extension_type = int.from_bytes(extension_bytes[:2], 'big')
-            extension_data_length = int.from_bytes(extension_bytes[2:4], 'big')
-            # print(f"Extension ({t}) length: {extension_data_length}")
-            extension_data = extension_bytes[4:4 + extension_data_length]
-            t, d = parse_extension(extension_type, extension_data)
-            extensions[t] = d
-            extension_bytes = extension_bytes[4 + extension_data_length:]
+        extensions = Extensions.parse(extension_bytes)
+
         parsed_info["extensions"] = extensions
         return True, parsed_info
-
 
