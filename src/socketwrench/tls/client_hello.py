@@ -4,14 +4,11 @@ from socketwrench.tls.cipher_suites import CipherSuite, UnrecognizedCipherSuite
 
 from socketwrench.tls.extensions.extension_types import ExtensionType, UnrecognizedExtensionType, parse_extension, \
     Extensions
+from socketwrench.tls.versions import TLSVersion
 
 
 class ParsedClientHello(TypedDict):
-    message: bytes
     tls_version: float
-    record_length: int
-    client_hello_length: int
-    client_hello_data: bytes
     client_version: float
     random: bytes
     session_id: bytes
@@ -19,27 +16,25 @@ class ParsedClientHello(TypedDict):
     extensions: Extensions
 
 
-class ClientHello:
-    message: bytes
+class ClientHello(bytes):
     tls_version: float
-    record_length: int
-    client_hello_length: int
-    client_hello_data: bytes
     client_version: float
     random: bytes
     session_id: bytes
     cipher_suites: list[CipherSuite | UnrecognizedCipherSuite]
     extensions: dict[ExtensionType | UnrecognizedExtensionType, bytes]
 
-    def __init__(self, data: bytes | ParsedClientHello):
+    def __new__(cls, data: bytes | ParsedClientHello):
         if isinstance(data, bytes):
-            valid, parsed_client_hello = self.is_client_hello(data)
+            valid, parsed_client_hello = cls.is_client_hello(data)
             if not valid:
                 raise RuntimeError("Invalid ClientHello")
         else:
             parsed_client_hello = data
-        self.message = data
-        self.__dict__.update(parsed_client_hello)
+        data = parsed_client_hello.pop("message")
+        x = super().__new__(cls, data)
+        x.__dict__.update(parsed_client_hello)
+        return x
 
     def __getitem__(self, item):
         return getattr(self, item)
@@ -64,13 +59,13 @@ class ClientHello:
         # Read TLS version (bytes 1-2)
         v = message[1:3]
         if v == b'\x03\x01':
-            tls_version = 1.0
+            tls_version = TLSVersion.TLS_1_0
         elif v == b'\x03\x02':
-            tls_version = 1.1
+            tls_version = TLSVersion.TLS_1_1
         elif v == b'\x03\x03':
-            tls_version = 1.2
+            tls_version = TLSVersion.TLS_1_2
         elif v == b'\x03\x04':
-            tls_version = 1.3
+            tls_version = TLSVersion.TLS_1_3
         else:
             return False, parsed_info
 
@@ -81,7 +76,6 @@ class ClientHello:
 
         # Read length of the record (bytes 3-5)
         record_length = int.from_bytes(message[3:5], 'big')
-        parsed_info["record_length"] = record_length
 
         if n < (5 + record_length):
             return "partial", parsed_info
@@ -95,27 +89,26 @@ class ClientHello:
 
         # Read length of the ClientHello (bytes 6-9)
         client_hello_length = int.from_bytes(message[6:9], 'big')
-        parsed_info["client_hello_length"] = client_hello_length
 
         if n < (9 + client_hello_length):
             return "partial", parsed_info
 
         # Extract ClientHello data
         client_hello_data = message[9:9 + client_hello_length]
-        parsed_info["client_hello_data"] = client_hello_data
+        # parsed_info["client_hello_data"] = client_hello_data
 
         # Read client_version (2 bytes)
         if len(client_hello_data) < 2:
             return "partial", parsed_info
         client_version_bytes = client_hello_data[:2]
         if client_version_bytes == b'\x03\x01':
-            client_version = 1.0
+            client_version = TLSVersion.TLS_1_0
         elif client_version_bytes == b'\x03\x02':
-            client_version = 1.1
+            client_version = TLSVersion.TLS_1_1
         elif client_version_bytes == b'\x03\x03':
-            client_version = 1.2
+            client_version = TLSVersion.TLS_1_2
         elif client_version_bytes == b'\x03\x04':
-            client_version = 1.3
+            client_version = TLSVersion.TLS_1_3
         else:
             return False, parsed_info
 
