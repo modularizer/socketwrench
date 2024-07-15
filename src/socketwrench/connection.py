@@ -70,8 +70,9 @@ class Connection:
         pre_body_bytes, body = request_data.split(end_of_header, 1)
 
         # Parsing Content-Length if present for requests with body
-        if b'Content-Length:' in pre_body_bytes:
-            length = int(pre_body_bytes.split(b'Content-Length: ')[1].split(new_line)[0])
+        lower = pre_body_bytes.lower()
+        if b'content-length: ' in lower:
+            length = int(lower.split(b'content-length: ')[1].split(new_line)[0])
             while len(body) < length and ((not self.cleanup_event) or (not self.cleanup_event.is_set())):
                 body += connection_socket.recv(chunk_size)
         else:
