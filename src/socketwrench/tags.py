@@ -26,19 +26,21 @@ def private(handler):
 
 
 def allowed_methods(*methods: str, autofill=None):
-    def decorator(handler, route: str = None, error_mode: str = None, openapi: dict = None, autofill=None, **kwargs):
+    def decorator(handler, route: str = None, error_mode: str = None, openapi: dict = None, autofill=None, allowed_methods=None, **kwargs):
+        if allowed_methods is None:
+            allowed_methods = methods
         if autofill is not None:
             kwargs["autofill"] = autofill
         if isinstance(handler, str) and route is None:
-            return partial(get, route=handler, error_mode=error_mode, openapi=openapi, **kwargs)
+            return partial(decorator, route=handler, error_mode=error_mode, openapi=openapi, allowed_methods=allowed_methods, **kwargs)
         if route is not None:
             if "routes" not in handler.__dict__:
                 tag(handler, routes=[], **kwargs)
             tag(handler, routes=list(set(handler.__dict__["routes"] + [route])), **kwargs)
-        if methods is not None:
+        if allowed_methods is not None:
             if "allowed_methods" not in handler.__dict__:
                 tag(handler, allowed_methods=[], **kwargs)
-            tag(handler, allowed_methods=list(set(handler.__dict__["allowed_methods"] + list(methods))), **kwargs)
+            tag(handler, allowed_methods=list(set(handler.__dict__["allowed_methods"] + list(allowed_methods))), **kwargs)
         if error_mode is not None:
             tag(handler, error_mode=error_mode, openapi=openapi, **kwargs)
         return handler
