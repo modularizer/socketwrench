@@ -4,6 +4,9 @@ import struct
 from socketwrench.tls.cipher_suites.algorithms.aes_gcm import AES128GCM_SHA256
 from socketwrench.tls.cipher_suites.cipher_suites import CipherSuite
 from socketwrench.tls.client_hello import ClientHello
+from socketwrench.tls.extensions.extension_types import Extensions
+from socketwrench.tls.extensions.key_share import KeyShare
+from socketwrench.tls.extensions.supported_versions import SupportedVersions
 from socketwrench.tls.versions import TLSVersion
 
 
@@ -15,7 +18,7 @@ class ServerHello:
 
     def __init__(self, client_hello: ClientHello):
         self.client_hello = client_hello
-        self.version = TLSVersion.TLS_1_2
+        self.version = TLSVersion.TLS_1_3
         self.random = os.urandom(32)
         self.session_id = client_hello['session_id']
         self.cipher_suite = self.select_cipher_suite(client_hello['cipher_suites'])
@@ -30,12 +33,17 @@ class ServerHello:
         raise ValueError("No supported cipher suite found")
 
     def build_extensions(self, client_extensions):
-        # Build server extensions based on client's extensions and server capabilities
-        extensions = b''
+        extensions = Extensions({
+            "SupportedVersions": SupportedVersions([self.version]),
+            "ServerName": client_extensions.get('ServerName', b''),
 
-        # for extension_type, value in client_extensions.items():
-        #     if extension_type == b'\x00\x0A':
-        return extensions
+        })
+        # Build server extensions based on client's extensions and server capabilities
+        # extensions = b''
+        #
+        # # for extension_type, value in client_extensions.items():
+        # #     if extension_type == b'\x00\x0A':
+        return extensions.to_bytes()
 
     def to_bytes(self):
         # Construct the ServerHello message

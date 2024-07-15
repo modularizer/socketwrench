@@ -142,6 +142,15 @@ class Extensions(dict):
         key = self._parse_key(key)
         return super().get(key, default)
 
+    def to_bytes(self) -> bytes:
+        b = b''
+        for value in self.values():
+            b += value.to_bytes()
+        return b
+
+    def __bytes__(self):
+        return self.to_bytes()
+
 
 
 

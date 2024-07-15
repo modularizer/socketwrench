@@ -19,7 +19,7 @@ class ServerName(str):
 
     @property
     def data(self) -> bytes:
-        return self.encode()
+        return b'\x00' + len(self).to_bytes(2, "big") + self.encode()
 
     def to_bytes(self) -> bytes:
         # convert number to two bytes, and length to two bytes
