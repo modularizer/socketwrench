@@ -91,7 +91,6 @@ class FormBody(RequestBody):
 class FormSection(bytes):
     def __new__(cls, data: bytes):
         if not b'\r\n\r\n' in data:
-            print(data)
             raise InvalidFormError(b"Could not find form section headers")
         headers, body = data.split(b"\r\n\r\n", 1)
         hd = HeaderBytes(headers).to_dict()
@@ -449,6 +448,24 @@ ContentType.content_types = content_types
 
 class Headers(dict):
     EMPTY = {}
+    def __init__(self, d):
+        d = {self.cc(k): v for k, v in d.items()}
+        super().__init__(d)
+
+    @staticmethod
+    def cc(k):
+        # replace the first character following a hyphen or a space with its uppercase equivalent
+        s = ""
+        cap = False
+        for c in k:
+            if cap:
+                s += c.upper()
+                cap = False
+            elif c in "- ":
+                cap = True
+            else:
+                s += c.lower()
+        return s
 
     def to_string(self) -> str:
         s = ""
@@ -458,6 +475,21 @@ class Headers(dict):
 
     def __str__(self):
         return self.to_string()
+
+    def __getitem__(self, item):
+        return super().__getitem__(self.cc(item))
+
+    def __setitem__(self, key, value):
+        super().__setitem__(self.cc(key), value)
+
+    def __delitem__(self, item):
+        return super().__delitem__(self.cc(item))
+
+    def __contains__(self, item):
+        return super().__contains__(self.cc(item))
+
+    def get(self, item, default=None):
+        return super().get(self.cc(item), default)
 
     def to_bytes(self) -> bytes:
         return self.to_string().encode()
@@ -1098,6 +1130,7 @@ class FileResponse(SuccessResponse):
 
         if headers is None:
             headers = {}
+        headers = Headers(headers)
 
         if download and "Content-Disposition" not in headers:
             headers["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -1276,6 +1309,7 @@ class JSONResponse(SuccessResponse):
                  version: str = "HTTP/1.1", raw: bool = False):
         if headers is None:
             headers = {}
+        headers = Headers(headers)
         if "Content-Type" not in headers:
             headers["Content-Type"] = "application/json"
         if not isinstance(data, str):
