@@ -93,8 +93,15 @@ class Connection:
         return False
 
     def close(self):
-        self.socket.shutdown(socket.SHUT_WR) # seems to be needed for linux?
-        self.socket.close()
+        try:
+            self.socket.shutdown(socket.SHUT_WR) # seems to be needed for linux?
+        except Excerption as e:
+            logger.warning(f"Error shutting down socket: {e}")
+
+        try:
+            self.socket.close()
+        except Excerption as e:
+            logger.warning(f"Error closing socket: {e}")
 
     def __repr__(self):
         if self._rep is None:
