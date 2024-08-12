@@ -358,6 +358,8 @@ def wrap_handler(_handler, error_mode: str = None):
                 msg = "".join(tb)
                 if len(msg.splitlines()) == 2:
                     msg = msg.splitlines()[1]
+            else:
+                msg = str(e).encode()
 
             status_codes = {
                 PermissionError: 403,  # Forbidden
