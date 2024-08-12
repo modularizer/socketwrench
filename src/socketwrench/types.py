@@ -777,7 +777,6 @@ class ResponseType(type):
 class Response(Exception, metaclass=ResponseType):
     default_content_type = None
     default_status_code = HTTPStatusCode.OK
-    _pseudo_subclass = False
 
     @classmethod
     def from_status_code(cls, status_code: int):
@@ -810,7 +809,7 @@ class Response(Exception, metaclass=ResponseType):
             return super(RawResponse, cls).__new__(cls)
 
         # Create an instance of the appropriate subclass based on the body type
-        if cls is Response or getattr(cls, "_pseudo_subclass", False):
+        if cls is Response or cls.__init__ is Response.__init__:
             if isinstance(body, (bytes, memoryview)):
                 return super(Response, cls).__new__(cls)
             elif isinstance(body, str):
@@ -900,7 +899,6 @@ class RawResponse(Response):
 
 class InformationalResponse(Response):
     default_status_code = 100
-    _pseudo_subclass = True
 
     def __subclasshook__(cls, __subclass):
         return super().__subclasshook__(__subclass) or (
@@ -908,7 +906,6 @@ class InformationalResponse(Response):
 
 class SuccessResponse(Response):
     default_status_code = 200
-    _pseudo_subclass = True
 
     def __subclasshook__(cls, __subclass):
         return super().__subclasshook__(__subclass) or (
@@ -917,7 +914,6 @@ class SuccessResponse(Response):
 
 class RedirectionResponse(Response):
     default_status_code = 300
-    _pseudo_subclass = True
 
     def __subclasshook__(cls, __subclass):
         return super().__subclasshook__(__subclass) or (cls is RedirectionResponse and 300 <= __subclass.default_status_code <= 399)
@@ -925,7 +921,6 @@ class RedirectionResponse(Response):
 
 class ClientError(Response):
     default_status_code = 400
-    _pseudo_subclass = True
 
     def __subclasshook__(cls, __subclass):
         return super().__subclasshook__(__subclass) or (
@@ -942,7 +937,6 @@ class InvalidFormError(BadRequest):
 
 class ServerError(Response):
     default_status_code = 500
-    _pseudo_subclass = True
 
     def __subclasshook__(cls, __subclass):
         return super().__subclasshook__(__subclass) or (cls is ServerError and 500 <= __subclass.default_status_code <= 599)
@@ -1254,6 +1248,7 @@ class FileTypeResponse(metaclass=FileTypeResponseMeta):
 
 
 class HTMLResponse(SuccessResponse):
+
     def __init__(self, html: str, status_code: int = 200, headers: dict = None, version: str = "HTTP/1.1", raw: bool = False):
         if headers is None:
             headers = {}
