@@ -358,6 +358,7 @@ def wrap_handler(_handler, error_mode: str = None):
                 msg = "".join(tb)
                 if len(msg.splitlines()) == 2:
                     msg = msg.splitlines()[1]
+                msg = msg.encode()
             else:
                 msg = str(e).encode()
 
@@ -375,7 +376,7 @@ def wrap_handler(_handler, error_mode: str = None):
             for t, c in status_codes.items():
                 if isinstance(e, t):
                     status_code = c
-            response = ErrorResponse(msg.encode(), version=request.version, status_code=status_code)
+            response = ErrorResponse(msg, version=request.version, status_code=status_code)
         return response
 
     tag(wrapper,
