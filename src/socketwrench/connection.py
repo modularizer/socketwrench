@@ -3,7 +3,7 @@ from socketwrench.standardlib_dependencies import (
     socket,
 )
 
-from socketwrench.types import Request, Response, InternalServerError
+from socketwrench.types import Request, Response, InternalServerError, BadRequest
 
 logger = logging.getLogger("socketwrench")
 
