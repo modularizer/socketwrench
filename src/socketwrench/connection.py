@@ -243,6 +243,8 @@ class Connection:
                 self.send_response(socket, ise)
             except Exception as e2:
                 logger.error(f"Error sending response: {e2}")
+        finally:
+            Connection.thread_connections.pop(call_id)
 
     def receive_request(self, connection_socket: socket.socket, chunk_size: int = None) -> Request:
         connection_socket.settimeout(self.timeout)
